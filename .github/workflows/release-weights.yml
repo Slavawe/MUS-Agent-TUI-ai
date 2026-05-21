@@ -1,0 +1,84 @@
+name: Release Weights to Hugging Face
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      bin_file:
+        description: 'Path to .bin weights file'
+        required: true
+        type: string
+      model_id:
+        description: 'Hugging Face model ID'
+        required: false
+        default: 'Slavawe/mus-uran-weights'
+        type: string
+
+jobs:
+  upload-weights:
+    name: Upload weights to HF Hub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install huggingface_hub
+
+      - name: Find .bin files in release
+        id: find-bins
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            # Search for .bin in repo (from release asset or repo itself)
+            BIN_FILES=$(find . -name "*.bin" -not -path "./.git/*" 2>/dev/null || true)
+            if [ -z "$BIN_FILES" ]; then
+              echo "status=no-binaries-found" >> $GITHUB_OUTPUT
+            else
+              echo "status=found" >> $GITHUB_OUTPUT
+              echo "files<<EOF" >> $GITHUB_OUTPUT
+              echo "$BIN_FILES" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            fi
+          else
+            # Manual trigger — use provided path
+            if [ -f "${{ inputs.bin_file }}" ]; then
+              echo "status=found" >> $GITHUB_OUTPUT
+              echo "files<<EOF" >> $GITHUB_OUTPUT
+              echo "${{ inputs.bin_file }}" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            else
+              echo "status=file-not-found" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Upload to Hugging Face
+        if: steps.find-bins.outputs.status == 'found'
+        env:
+          HF_TOKEN: ${{ secrets.HF_WRITE_TOKEN }}
+        run: |
+          MODEL_ID="${{ inputs.model_id || 'Slavawe/mus-uran-weights' }}"
+          echo "${{ steps.find-bins.outputs.files }}" | while read -r bin_file; do
+            [ -z "$bin_file" ] && continue
+            echo "Uploading: $bin_file"
+            python3 mus-cuda/scripts/upload_to_hf.py \
+              --token "$HF_TOKEN" \
+              --model "$MODEL_ID" \
+              --file "$bin_file" \
+              --commit "Release ${{ github.event.release.tag_name || 'manual' }}"
+          done
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.find-bins.outputs.status }}" = "no-binaries-found" ]; then
+            echo "⚠️ No .bin files found in repository"
+          elif [ "${{ steps.find-bins.outputs.status }}" = "file-not-found" ]; then
+            echo "❌ Specified file not found: ${{ inputs.bin_file }}"
+          else
+            echo "✅ Uploaded weights to Hugging Face"
+          fi

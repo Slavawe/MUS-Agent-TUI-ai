@@ -1,0 +1,116 @@
+name: CI Build & Test
+
+on:
+  push:
+    branches: [master, main, develop]
+    paths-ignore:
+      - '**.md'
+      - 'assets/**'
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+env:
+  CUDA_VERSION: "12.5"
+
+jobs:
+  mus-cuda-build:
+    name: mus-cuda (C++17 / CUDA)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build-type: [Release, Debug]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install CUDA Toolkit
+        uses: Jimver/cuda-toolkit@v0.2.22
+        with:
+          cuda: ${{ env.CUDA_VERSION }}
+          method: network
+          sub-packages: '["cccl", "cudart", "cublas"]'
+
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: mus-cuda/build
+          key: ${{ runner.os }}-cuda${{ env.CUDA_VERSION }}-${{ matrix.build-type }}-${{ hashFiles('mus-cuda/CMakeLists.txt', 'mus-cuda/src/**', 'mus-cuda/include/**') }}
+          restore-keys: |
+            ${{ runner.os }}-cuda${{ env.CUDA_VERSION }}-${{ matrix.build-type }}-
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+            -DMUS_BUILD_CLOUD=ON \
+            -DMUS_ENABLE_DEBUG=${{ matrix.build-type == 'Debug' && 'ON' || 'OFF' }}
+        working-directory: mus-cuda
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+        working-directory: mus-cuda
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mus-cuda-binaries-${{ matrix.build-type }}
+          path: mus-cuda/build/
+          retention-days: 3
+
+  mus-vision-build:
+    name: mus-vision (Rust / Python)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            mus-vision/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('mus-vision/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable
+          rustup component add clippy rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --check
+        working-directory: mus-vision
+
+      - name: Clippy lint
+        run: cargo clippy -- -D warnings
+        working-directory: mus-vision
+
+      - name: Build
+        run: cargo build --release
+        working-directory: mus-vision
+
+      - name: Run tests
+        run: cargo test
+        working-directory: mus-vision
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build deps
+        run: |
+          pip install maturin numpy pillow
+          cd mus-vision
+          maturin develop --release
+
+      - name: Run Python tests
+        run: |
+          pip install pytest
+          pytest tests/ -v
+        working-directory: mus-vision
+        continue-on-error: true

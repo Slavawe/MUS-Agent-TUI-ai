@@ -1,5 +1,8 @@
 # МУС — Modular Smart System
 
+![CI Build](https://github.com/Slavawe/MUS-AI_platform/actions/workflows/build.yml/badge.svg)
+[![Hugging Face](https://img.shields.io/badge/🤗_Weights-Shuteira/mus--uran--weights-blue)](https://huggingface.co/Shuteira/mus-uran-weights)
+
 **Version:** 2.0.0  
 **License:** MIT / Apache 2.0 (Dual)  
 **Stack:** C++17 / CUDA → Hugging Face Hub
