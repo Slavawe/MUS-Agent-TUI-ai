@@ -1,0 +1,1 @@
+/home/slava/Документы/MUS/mus-vision/target/release/libmus_vision_core.so: /home/slava/Документы/MUS/mus-vision/src/ascii_tokenizer.rs /home/slava/Документы/MUS/mus-vision/src/canvas.rs /home/slava/Документы/MUS/mus-vision/src/lib.rs /home/slava/Документы/MUS/mus-vision/src/renderer.rs

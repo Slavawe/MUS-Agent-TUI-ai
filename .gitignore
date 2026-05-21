@@ -1,0 +1,154 @@
+# ─── МУС Project Files ────────────────────────────────────────────────
+mus-cuda/build/
+mus-cuda/.cache/
+mus-cuda/*.bin
+mus-cuda/*.out
+mus-cuda/*.obj
+mus-cuda/*.exe
+
+# ─── Weights and Data ─────────────────────────────────────────────────
+mus-cuda/**/*.bin
+mus-cuda/**/*.weights
+mus-cuda/**/*.tokenizer
+mus-cuda/data/**/*
+!mus-cuda/data/README.md
+
+# ─── Python / Cloud ──────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# ─── IDE / System ────────────────────────────────────────────────────
+.vscode/
+.obsidian/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ─── Cloud Credentials ───────────────────────────────────────────────
+*.token
+.env
+kaggle.json
+client_secret*
+service-account-key*
+
+# ─── Git / CI / CD ───────────────────────────────────────────────────
+.git/
+
+# ─── Build Artifacts ─────────────────────────────────────────────────
+mus-cuda/build/
+mus-cuda/CMakeFiles/
+mus-cuda/cmake-build*/
+mus-cuda/Makefile
+mus-cuda/*.cmake
+mus-cuda/CMakeCache.txt
+mus-cuda/compile_commands.json
+
+# ─── But keep these ──────────────────────────────────────────────────
+!mus-cuda/CMakeLists.txt
+!mus-cuda/include/
+!mus-cuda/src/
+!mus-cuda/scripts/
+!mus-cuda/LICENSE*
+!mus-cuda/README.md
+# Временные файлы сборки C++ (CMake)
+/build/
+/.cmake/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+
+# Бинарные веса моделей и кэш (Самое тяжелое)
+*.bin
+*.dat
+*.safetensors
+checkpoints/
+
+# Логи обучения и отладки
+*.log
+
+# Временные файлы текстовых редакторов
+.DS_Store
+*.swp
+# =====================================================================
+# СЕКЦИЯ 1: Сборка C++ и Артефакты компиляции (На базе CMake)
+# =====================================================================
+# Игнорируем локальную папку сборки
+build/
+/build/
+build_local/
+x64/
+Debug/
+Release/
+
+# Временные файлы и кэш CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeSettings.json
+CMakeUserPresets.json
+cmake_install.cmake
+Makefile
+compile_commands.json
+.cmake/
+
+# Скомпилированные локальные бинарники и библиотеки
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# =====================================================================
+# СЕКЦИЯ 2: ИИ / Нейросети (Веса моделей и Кэш датасетов)
+# =====================================================================
+# Игнорируем тяжелые бинарные веса «Урагана» и «Солнца»
+*.bin
+*.dat
+*.safetensors
+*.onnx
+*.pt
+*.pth
+
+# Папки для чекпоинтов и локальных баз данных
+checkpoints/
+/checkpoints/
+data_cache/
+*.log
+
+# =====================================================================
+# СЕКЦИЯ 3: IDE, Среда разработки и ОС (Linux Mint / Windows)
+# =====================================================================
+# Настройки редакторов кода
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Граф концептов и заметки (если Obsidian лежит внутри репозитория)
+.obsidian/
+workspace.json
+
+# Системные файлы мусора Linux / Windows / Mac
+.DS_Store
+Thumbs.db
+Desktop.ini
+*~
+*.swp
+*.swo
+
+# =====================================================================
+# СЕКЦИЯ 4: Безопасность и Облачные ключи (Критично!)
+# =====================================================================
+# Ключи аутентификации для Kaggle, Hugging Face и окружения
+*.token
+.env
+kaggle.json
+client_secret*.json

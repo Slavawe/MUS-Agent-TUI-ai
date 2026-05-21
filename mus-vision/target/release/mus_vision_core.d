@@ -1,0 +1,1 @@
+C:\Users\slava\Documents\MUS\mus-vision\target\release\mus_vision_core.dll: C:\Users\slava\Documents\MUS\mus-vision\src\ascii_tokenizer.rs C:\Users\slava\Documents\MUS\mus-vision\src\canvas.rs C:\Users\slava\Documents\MUS\mus-vision\src\lib.rs C:\Users\slava\Documents\MUS\mus-vision\src\renderer.rs
