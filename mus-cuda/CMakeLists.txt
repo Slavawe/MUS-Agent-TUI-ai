@@ -55,6 +55,14 @@ if(MUS_ENABLE_DEBUG)
     message(STATUS "Debug mode: ON")
 endif()
 
+# ─── Optional OpenMP ──────────────────────────────────────────────────
+find_package(OpenMP QUIET)
+if(OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP: found (${OpenMP_CXX_FLAGS})")
+else()
+    message(STATUS "OpenMP: not found — parallel loops disabled")
+endif()
+
 # ─── Dependencies ─────────────────────────────────────────────────────
 find_package(CUDAToolkit REQUIRED)
 
@@ -75,6 +83,11 @@ target_link_libraries(mus_core PUBLIC
     CUDA::cudart
     CUDA::cublas
 )
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(mus_core PUBLIC OpenMP::OpenMP_CXX)
+    target_compile_options(mus_core PUBLIC ${OpenMP_CXX_FLAGS})
+endif()
 
 set_target_properties(mus_core PROPERTIES
     CUDA_RESOLVE_DEVICE_SYMBOLS ON
@@ -111,6 +124,7 @@ mus_add_tool(mus_train_4_6gb  src/train_4_6gb.cu     "Auto 400M/700M for 4-6GB")
 if(NOT MUS_BUILD_MINIMAL)
     mus_add_tool(mus_train_1b_multimodal src/train_1b_multimodal.cu "1B multimodal demo")
     mus_add_tool(mus_train_optimized_8gb src/train_optimized_8gb.cu "Optimized 1B for 8GB")
+    mus_add_tool(mus_train_1660ti src/train_1660ti.cu "500M optimized for GTX 1660 Ti")
     mus_add_tool(mus_data_loader         src/data_loader.cu        "Multimodal data loader")
 endif()
 
@@ -136,6 +150,7 @@ endif()
 # ═══════════════════════════════════════════════════════════════════════
 install(TARGETS
     mus_inference mus_train mus_train_f16 mus_train_4_6gb
+    mus_train_1660ti
     memory_analysis gemm_test nan_test
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

@@ -46,6 +46,9 @@ struct MUSConfig {
     float loss_weight_ascii = 5.0f;
     float loss_weight_text = 1.0f;
     
+    // Turing architecture (GTX 1660 Ti has no Tensor Cores)
+    bool turing_optimizations = false;  // enable FP16 fallback patterns
+
     // Multimodal support flags
     bool enable_vision = true;
     bool enable_audio = false;
@@ -179,6 +182,27 @@ inline MUSConfig get_800m_config() {
     return cfg;
 }
 
+// ─── GTX 1660 Ti (6GB, Turing, no Tensor Cores) — оптимизирован ──────
+inline MUSConfig get_500m_gtx1660ti_config() {
+    MUSConfig cfg;
+    cfg.model_size = MUSConfig::SMALL_500M;
+    cfg.hidden_dim = 1280;
+    cfg.num_layers = 22;
+    cfg.num_heads = 20;
+    cfg.head_dim = 64;
+    cfg.ffn_dim = 3456;
+    cfg.vocab_size = 48000;
+    cfg.max_seq_len = 256;
+    cfg.enable_gradient_checkpointing = true;
+    cfg.checkpoint_interval = 4;
+    cfg.enable_offloading = false;
+    cfg.enable_vision = false;
+    cfg.enable_audio = false;
+    cfg.enable_cross_attention = false;
+    cfg.turing_optimizations = true;  // FP16 without Tensor Cores
+    return cfg;
+}
+
 // ─── Modular config switching ──────────────────────────────────────────
 enum MUSModule {
     MUS_MODULE_CODING,     // Code generation + CUDA
@@ -192,8 +216,19 @@ inline MUSConfig mus_select_config(size_t vram_bytes, MUSModule module = MUS_MOD
     float vram_gb = vram_bytes / (1024.0f * 1024.0f * 1024.0f);
     MUSConfig cfg;
 
-    if (vram_gb >= 7.5f) cfg = get_700m_6gb_config();
-    else                  cfg = get_400m_4gb_config();
+    // Detect Turing + 6GB → GTX 1660 Ti optimized
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, 0);
+    bool is_turing_6gb = (prop.major == 7 && prop.minor == 5 &&
+                          vram_gb >= 5.5f && vram_gb <= 7.0f);
+
+    if (is_turing_6gb) {
+        cfg = get_500m_gtx1660ti_config();
+    } else if (vram_gb >= 7.5f) {
+        cfg = get_700m_6gb_config();
+    } else {
+        cfg = get_400m_4gb_config();
+    }
 
     // Tune for module
     switch (module) {
