@@ -85,8 +85,8 @@ void mus_destroy_context(MUSContext* ctx) {
 
 void build_weight_table(const MUSConfig& cfg, float* w, int V) {
     for (int i = 0; i < V; i++) {
-        if (i < cfg.ascii_tokens_start) w[i] = cfg.loss_weight_aer;
-        else if (i <= cfg.ascii_tokens_end) w[i] = cfg.loss_weight_ascii;
+        if (i < cfg.cpp_tokens_start) w[i] = cfg.loss_weight_aer;
+        else if (i <= cfg.cpp_tokens_end) w[i] = cfg.loss_weight_cpp;
         else if (i >= cfg.multimodal_tags_start && i <= cfg.multimodal_tags_end) w[i] = cfg.loss_weight_aer;
         else w[i] = cfg.loss_weight_text;
     }

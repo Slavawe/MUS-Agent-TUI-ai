@@ -1,10 +1,10 @@
-"""Smoke test for mus-vision — проверка Photo и Graph режимов."""
+"""Smoke test for uragan-vision — проверка Photo и Graph режимов."""
 import numpy as np
-from mus_vision import ASCIIVisionConfig, ASCIIVisionCore
+from mus_vision import CPPVisionConfig, CPPVisionCore
 
 # ── Photo mode ─────────────────────────────────────────────
-cfg = ASCIIVisionConfig(vision_width=8, vision_height=4, ascii_palette=" .oO#")
-core = ASCIIVisionCore(cfg, mode="photo")
+cfg = CPPVisionConfig(vision_width=8, vision_height=4, cpp_palette=" .oO#")
+core = CPPVisionCore(cfg, mode="photo")
 
 mat = core.generate_shape("circle", "center", "medium", mode="photo")
 print("Photo mode — circle:")
@@ -18,7 +18,7 @@ print("Photo decoded:")
 print(decoded)
 
 # ── Graph mode ─────────────────────────────────────────────
-core_graph = ASCIIVisionCore(cfg, mode="graph")
+core_graph = CPPVisionCore(cfg, mode="graph")
 
 mat_g = core_graph.generate_shape("circle", "center", "medium", mode="graph")
 print("Graph mode — circle (edge detection style):")

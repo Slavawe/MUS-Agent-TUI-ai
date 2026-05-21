@@ -12,7 +12,7 @@ on:
       model_id:
         description: 'Hugging Face model ID'
         required: false
-        default: 'Slavawe/mus-uran-weights'
+        default: 'Shuteira/uragan-1.0-weights'
         type: string
 
 jobs:
@@ -62,7 +62,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_WRITE_TOKEN }}
         run: |
-          MODEL_ID="${{ inputs.model_id || 'Slavawe/mus-uran-weights' }}"
+          MODEL_ID="${{ inputs.model_id || 'Shuteira/uragan-1.0-weights' }}"
           echo "${{ steps.find-bins.outputs.files }}" | while read -r bin_file; do
             [ -z "$bin_file" ] && continue
             echo "Uploading: $bin_file"

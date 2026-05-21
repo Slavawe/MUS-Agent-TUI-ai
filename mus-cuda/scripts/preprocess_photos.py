@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""Препроцессинг фото → ASCII-токены → бинарный кэш для C++/CUDA обучения."""
+"""Препроцессинг фото → C++ токены → бинарный кэш для CUDA обучения."""
 
 import sys, os, struct, time, random
 import numpy as np
 from PIL import Image
 from pathlib import Path
 
-# Project root = two levels up from scripts/
 PROJECT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, PROJECT)
 
 from mus.config import MUSConfig
-from mus.vision.ascii_vision import ASCIIVisionEncoder
+from mus.vision.cpp_vision import CPPVisionEncoder
 
 PHOTO_DIR = os.path.join(PROJECT, "data", "photos")
 CACHE_FILE = os.path.join(PHOTO_DIR, "train_cache.bin")
@@ -19,7 +18,7 @@ META_FILE = os.path.join(PHOTO_DIR, "train_cache.meta")
 
 def main():
     config = MUSConfig()
-    encoder = ASCIIVisionEncoder(config)
+    encoder = CPPVisionEncoder(config)
 
     seq_len = 512
     vision_start = config.aer_vision_start_id
@@ -36,7 +35,7 @@ def main():
         try:
             img = Image.open(f).convert("RGB")
             arr = np.array(img, dtype=np.uint8)
-            tokens = encoder.encode(arr)  # [vision_start, ascii_tokens..., vision_end]
+            tokens = encoder.encode(arr)  # [vision_start, cpp_tokens..., vision_end]
         except Exception as e:
             print(f"  Skip {f.name}: {e}")
             continue

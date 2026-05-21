@@ -1,23 +1,23 @@
-"""Модульные тесты для ASCIIVisionCore: Photo и Graph режимы."""
+"""Модульные тесты для CPPVisionCore: Photo и Graph режимы."""
 import numpy as np
 import pytest
 
-from mus_vision import ASCIIVisionConfig, ASCIIVisionCore
+from mus_vision import CPPVisionConfig, CPPVisionCore
 
 
 @pytest.fixture
 def cfg():
-    return ASCIIVisionConfig(vision_width=8, vision_height=4, ascii_palette=" .oO#")
+    return CPPVisionConfig(vision_width=8, vision_height=4, cpp_palette=" .oO#")
 
 
 @pytest.fixture
 def core_photo(cfg):
-    return ASCIIVisionCore(cfg, mode="photo")
+    return CPPVisionCore(cfg, mode="photo")
 
 
 @pytest.fixture
 def core_graph(cfg):
-    return ASCIIVisionCore(cfg, mode="graph")
+    return CPPVisionCore(cfg, mode="graph")
 
 
 # ════════════════════════════════════════════════════════════════
@@ -25,8 +25,8 @@ def core_graph(cfg):
 # ════════════════════════════════════════════════════════════════
 
 def test_init_modes(cfg):
-    p = ASCIIVisionCore(cfg, mode="photo")
-    g = ASCIIVisionCore(cfg, mode="graph")
+    p = CPPVisionCore(cfg, mode="photo")
+    g = CPPVisionCore(cfg, mode="graph")
     assert p.mode == "photo"
     assert g.mode == "graph"
 
@@ -77,8 +77,8 @@ def test_luminance_gamma_vs_raw(core_photo):
 
 def test_sobel_edges_on_uniform():
     """Sobel на однородном поле должен давать нули (кроме границ)."""
-    cfg = ASCIIVisionConfig(vision_width=8, vision_height=4)
-    core = ASCIIVisionCore(cfg, mode="graph")
+    cfg = CPPVisionConfig(vision_width=8, vision_height=4)
+    core = CPPVisionCore(cfg, mode="graph")
     uniform = np.full((8, 4), 0.5, dtype=np.float32)
     edges = core.sobel_edges(uniform)
     assert edges[1:-1, 1:-1].max() < 1e-6, "Однородное поле — нет границ"
@@ -86,8 +86,8 @@ def test_sobel_edges_on_uniform():
 
 def test_sobel_edges_on_step():
     """Sobel на ступеньке должен давать ненулевой отклик на границе."""
-    cfg = ASCIIVisionConfig(vision_width=8, vision_height=4)
-    core = ASCIIVisionCore(cfg, mode="graph")
+    cfg = CPPVisionConfig(vision_width=8, vision_height=4)
+    core = CPPVisionCore(cfg, mode="graph")
     step = np.zeros((8, 4), dtype=np.float32)
     step[:, 2:] = 1.0  # вертикальная граница в x=2
     edges = core.sobel_edges(step)
@@ -97,8 +97,8 @@ def test_sobel_edges_on_step():
 
 def test_sobel_max_one():
     """Sobel magnitude должна быть нормализована в [0, 1]."""
-    cfg = ASCIIVisionConfig(vision_width=8, vision_height=4)
-    core = ASCIIVisionCore(cfg, mode="graph")
+    cfg = CPPVisionConfig(vision_width=8, vision_height=4)
+    core = CPPVisionCore(cfg, mode="graph")
     step = np.zeros((8, 4), dtype=np.float32)
     step[:, 2:] = 1.0
     edges = core.sobel_edges(step)
@@ -262,7 +262,7 @@ def test_render_canvas(core_photo):
 def test_auto_detect_palette():
     """auto_detect_palette собирает символы из текста."""
     text = "hello  world"
-    pal = ASCIIVisionCore.auto_detect_palette(text)
+    pal = CPPVisionCore.auto_detect_palette(text)
     assert pal[0] == ' '
     assert 'h' in pal
     assert 'e' in pal
@@ -273,15 +273,15 @@ def test_auto_detect_palette():
 # ════════════════════════════════════════════════════════════════
 
 def test_config_defaults():
-    cfg = ASCIIVisionConfig()
+    cfg = CPPVisionConfig()
     assert cfg.vision_width == 64
     assert cfg.vision_height == 32
-    assert cfg.ascii_tokens_start == 2001
+    assert cfg.cpp_tokens_start == 2001
     assert cfg.vision_start_id == 2101
     assert cfg.vision_end_id == 2102
     assert cfg.vision_photo_id == 2104
     assert cfg.vision_graph_id == 2105
-    assert cfg.ascii_tokens_end == cfg.ascii_tokens_start + cfg.palette_len
+    assert cfg.cpp_tokens_end == cfg.cpp_tokens_start + cfg.palette_len
     assert cfg.head_dim == cfg.hidden_dim // cfg.num_heads
 
 

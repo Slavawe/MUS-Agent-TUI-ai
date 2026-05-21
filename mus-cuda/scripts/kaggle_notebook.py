@@ -7,9 +7,9 @@
 # ---
 
 # %% [markdown]
-# # МУС — Modular Smart System
+# # Uragan 1.0 — C++ CUDA Training
 # ## Kaggle Auto-Trainer
-# Run this notebook to train the MUS model on Kaggle's Tesla T4/P100 GPUs
+# Run this notebook to train the Uragan model on Kaggle's Tesla T4/P100 GPUs
 # and auto-upload weights to Hugging Face.
 
 # %% [markdown]
@@ -43,7 +43,7 @@ print(f"Exit code: {result.returncode}")
 if HF_TOKEN != "your_hf_write_token_here":
     from huggingface_hub import HfApi
     api = HfApi(token=HF_TOKEN)
-    files = api.list_repo_files("Shuteira/mus-uran-weights", repo_type="model")
+    files = api.list_repo_files("Shuteira/uragan-1.0-weights", repo_type="model")
     print("Files on HF:")
     for f in files:
         print(f"  {f}")

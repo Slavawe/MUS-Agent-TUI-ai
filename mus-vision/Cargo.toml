@@ -1,10 +1,11 @@
 [package]
-name = "mus-vision-core"
-version = "0.1.0"
+name = "uragan-vision-core"
+version = "1.0.0"
 edition = "2021"
+description = "Uragan 1.0 — C++ Vision Tokenizer Core (Rust/PyO3)"
 
 [lib]
-name = "mus_vision_core"
+name = "uragan_vision_core"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

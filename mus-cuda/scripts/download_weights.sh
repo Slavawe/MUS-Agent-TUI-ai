@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-HF_REPO="Shuteira/mus-uran-weights"
+HF_REPO="Shuteira/uragan-1.0-weights"
 WEIGHTS_DIR="$(dirname "$0")/../weights"
 mkdir -p "$WEIGHTS_DIR"
 

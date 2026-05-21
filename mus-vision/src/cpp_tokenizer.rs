@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 
-/// Ultra-fast ASCII Vision Tokenizer v2 — улучшенное качество энкодинга.
+/// Uragan 1.0 C++ Vision Tokenizer — высокопроизводительный токенизатор.
 ///
 /// Режимы:
 /// - `Photo` — perceptual pipeline: gamma sRGB → BT.709 luminance → sqrt quantization
@@ -45,7 +45,7 @@ impl EncodeMode {
 }
 
 #[pyclass]
-pub struct ASCIITokenizer {
+pub struct CPPTokenizer {
     #[pyo3(get)]
     pub width: usize,
     #[pyo3(get)]
@@ -53,7 +53,7 @@ pub struct ASCIITokenizer {
     #[pyo3(get)]
     pub palette: String,
     #[pyo3(get)]
-    pub ascii_start: i64,
+    pub cpp_start: i64,
     #[pyo3(get)]
     pub vision_start: i64,
     #[pyo3(get)]
@@ -69,14 +69,14 @@ pub struct ASCIITokenizer {
 }
 
 #[pymethods]
-impl ASCIITokenizer {
+impl CPPTokenizer {
     #[new]
-    #[pyo3(signature = (width=64, height=32, palette=None, ascii_start=2001, vision_start=2101, vision_end=2102, frame_sep=2103, mode="photo"))]
+    #[pyo3(signature = (width=64, height=32, palette=None, cpp_start=2001, vision_start=2101, vision_end=2102, frame_sep=2103, mode="photo"))]
     pub fn new(
         width: usize,
         height: usize,
         palette: Option<String>,
-        ascii_start: i64,
+        cpp_start: i64,
         vision_start: i64,
         vision_end: i64,
         frame_sep: i64,
@@ -113,7 +113,7 @@ impl ASCIITokenizer {
             palette,
             palette_chars,
             palette_len,
-            ascii_start,
+            cpp_start,
             vision_start,
             vision_end,
             frame_sep,
@@ -194,7 +194,7 @@ impl ASCIITokenizer {
             if i == 0 || prev_frame.is_none() {
                 for &val in &resized {
                     let qi = quantize(val, self.palette_len, &self.mode);
-                    tokens.push(self.ascii_start + qi as i64);
+                    tokens.push(self.cpp_start + qi as i64);
                 }
                 prev_frame = Some(resized);
             } else {
@@ -210,7 +210,7 @@ impl ASCIITokenizer {
                         let x = (idx % self.width) as u16;
                         changed_data.push(y);
                         changed_data.push(x);
-                        changed_data.push((self.ascii_start + qi as i64) as u16);
+                        changed_data.push((self.cpp_start + qi as i64) as u16);
                     }
                 }
 
@@ -239,8 +239,8 @@ impl ASCIITokenizer {
             }
             for x in 0..self.width {
                 let token_idx = start_idx + y * self.width + x;
-                let token = if token_idx < tokens.len() { tokens[token_idx] } else { self.ascii_start };
-                let pi = ((token - self.ascii_start).max(0) as usize).min(self.palette_len - 1);
+                let token = if token_idx < tokens.len() { tokens[token_idx] } else { self.cpp_start };
+                let pi = ((token - self.cpp_start).max(0) as usize).min(self.palette_len - 1);
                 result.push(self.palette_chars[pi]);
             }
         }
@@ -302,7 +302,7 @@ impl ASCIITokenizer {
                     _ => 0.0,
                 };
                 let qi = quantize(val.clamp(0.0, 1.0), self.palette_len, &self.mode);
-                tokens.push(self.ascii_start + qi as i64);
+                tokens.push(self.cpp_start + qi as i64);
             }
         }
         tokens.push(self.vision_end);
@@ -311,18 +311,14 @@ impl ASCIITokenizer {
 
     pub fn info(&self) -> String {
         format!(
-            "ASCIITokenizer v2: {}x{}, palette={} chars, mode={}, tokens {}-{}",
+            "CPPTokenizer v1.0 (Uragan): {}x{}, palette={} chars, mode={}, tokens {}-{}",
             self.width, self.height, self.palette_len, self.mode.__str__(),
-            self.ascii_start, self.ascii_start + self.palette_len as i64 - 1
+            self.cpp_start, self.cpp_start + self.palette_len as i64 - 1
         )
     }
 }
 
-impl ASCIITokenizer {
-    // ════════════════════════════════════════════════════════════════
-    //  PHOTO MODE — perceptual pipeline (gamma + BT.709 + sqrt)
-    // ════════════════════════════════════════════════════════════════
-
+impl CPPTokenizer {
     fn encode_from_slice_rgb(&self, pixels: &[u8], w_in: usize, h_in: usize) -> PyResult<Vec<i64>> {
         let total = self.width * self.height;
         let mut tokens = Vec::with_capacity(total + 2);
@@ -374,7 +370,7 @@ impl ASCIITokenizer {
                     .max(0.0)
                     .min((self.palette_len - 1) as f32) as usize;
 
-                tokens.push(self.ascii_start + qi as i64);
+                tokens.push(self.cpp_start + qi as i64);
             }
         }
 
@@ -425,17 +421,13 @@ impl ASCIITokenizer {
                     .max(0.0)
                     .min((self.palette_len - 1) as f32) as usize;
 
-                tokens.push(self.ascii_start + qi as i64);
+                tokens.push(self.cpp_start + qi as i64);
             }
         }
 
         tokens.push(self.vision_end);
         Ok(tokens)
     }
-
-    // ════════════════════════════════════════════════════════════════
-    //  GRAPH MODE — edge detection pipeline (raw luminance + Sobel)
-    // ════════════════════════════════════════════════════════════════
 
     fn encode_graph_rgb(&self, pixels: &[u8], w_in: usize, h_in: usize) -> PyResult<Vec<i64>> {
         let total = self.width * self.height;
@@ -463,7 +455,6 @@ impl ASCIITokenizer {
                 let base01 = base00 + 3;
                 let base11 = base10 + 3;
 
-                // Raw sRGB luminance — без gamma correction для сохранения контраста
                 let l00 = pixels[base00] as f32 / 255.0 * 0.2126
                     + pixels[base00 + 1] as f32 / 255.0 * 0.7152
                     + pixels[base00 + 2] as f32 / 255.0 * 0.0722;
@@ -492,7 +483,7 @@ impl ASCIITokenizer {
         tokens.push(self.vision_start);
         for &mag in &edges {
             let qi = quantize_linear(mag, self.palette_len);
-            tokens.push(self.ascii_start + qi as i64);
+            tokens.push(self.cpp_start + qi as i64);
         }
         tokens.push(self.vision_end);
         Ok(tokens)
@@ -544,7 +535,7 @@ impl ASCIITokenizer {
         tokens.push(self.vision_start);
         for &mag in &edges {
             let qi = quantize_linear(mag, self.palette_len);
-            tokens.push(self.ascii_start + qi as i64);
+            tokens.push(self.cpp_start + qi as i64);
         }
         tokens.push(self.vision_end);
         Ok(tokens)
@@ -682,10 +673,6 @@ impl ASCIITokenizer {
         }
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════
-//  Free functions
-// ══════════════════════════════════════════════════════════════════════
 
 #[inline(always)]
 fn quantize(val: f32, palette_len: usize, mode: &EncodeMode) -> usize {

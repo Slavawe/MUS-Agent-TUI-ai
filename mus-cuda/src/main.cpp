@@ -269,7 +269,7 @@ int main() {
     CUDA_CHECK(cudaGetDevice(&dev));
     CUDA_CHECK(cudaGetDeviceProperties(&prop, dev));
     printf("╔══════════════════════════════════════════╗\n");
-    printf("║     MUS-CUDA Training Prototype v2      ║\n");
+    printf("║     Uragan 1.0 — C++ CUDA Training      ║\n");
     printf("╠══════════════════════════════════════════╣\n");
     printf("║  GPU: %-36s ║\n", prop.name);
     printf("║  SM:  %d.%d  |  Mem: %.1f GB             ║\n",

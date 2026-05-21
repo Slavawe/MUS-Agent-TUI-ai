@@ -17,20 +17,15 @@ import argparse
 from pathlib import Path
 import re
 
-# Token IDs based on MUS vocabulary
+# Token IDs based on Uragan 1.0 vocabulary
 PAD_TOKEN = 2001  # <PAD>
 UNK_TOKEN = 2002  # <UNK>
 BOS_TOKEN = 2003  # <BOS>
 EOS_TOKEN = 2004  # <EOS>
 
-# For Russian text, we'll use a simple char-by-char encoding
-# since we don't have a Russian BPE tokenizer here
-# Each unique char = unique token ID
-
 class SimpleCharTokenizer:
     def __init__(self):
-        # Start from TEXT range (after ASCII 2001-2077)
-        self.next_id = 5000  # Start in TEXT range
+        self.next_id = 5000
         self.char_to_id = {}
         self.id_to_char = {}
         

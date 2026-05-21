@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
-from mus_vision import ASCIIVisionConfig, ASCIIVisionCore
+from mus_vision import CPPVisionConfig, CPPVisionCore
 from mus_vision.canvas import VisionCanvas
 
 
@@ -18,9 +18,9 @@ DIAGRAM_DIR = Path("C:/Users/slava/Documents/MUS/data/diagrams")
 
 # ── 1. Encode photos (Photo mode) и диаграммы (Graph mode) ─────
 
-cfg = ASCIIVisionConfig(vision_width=64, vision_height=32, hidden_dim=192, num_layers=4, num_heads=6)
-core_photo = ASCIIVisionCore(cfg, mode="photo")
-core_graph = ASCIIVisionCore(cfg, mode="graph")
+cfg = CPPVisionConfig(vision_width=64, vision_height=32, hidden_dim=192, num_layers=4, num_heads=6)
+core_photo = CPPVisionCore(cfg, mode="photo")
+core_graph = CPPVisionCore(cfg, mode="graph")
 
 photos = list(PHOTO_DIR.glob("img*.jpg"))[:5]
 print(f"Found {len(photos)} test photos")
@@ -73,7 +73,7 @@ VD = VisionDataset
 # ── 3. Vision Transformer ────────────────────────────────────
 
 class VisionTransformer(nn.Module):
-    def __init__(self, cfg: ASCIIVisionConfig):
+    def __init__(self, cfg: CPPVisionConfig):
         super().__init__()
         self.cfg = cfg
         self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_dim)
@@ -118,7 +118,7 @@ class VisionTransformer(nn.Module):
 
 
 class VisionBlock(nn.Module):
-    def __init__(self, cfg: ASCIIVisionConfig):
+    def __init__(self, cfg: CPPVisionConfig):
         super().__init__()
         self.norm1 = nn.LayerNorm(cfg.hidden_dim)
         self.attn = nn.MultiheadAttention(cfg.hidden_dim, cfg.num_heads, batch_first=True)
@@ -163,8 +163,8 @@ print(f"  Total with diagrams: {len(all_data)}")
 # Synthetic augmentation
 while len(all_data) < 100:
     i = len(all_data)
-    start = cfg.ascii_tokens_start + (i % 10) * 5
-    seq = list(range(start, min(start + 128, cfg.ascii_tokens_start + 2048)))
+    start = cfg.cpp_tokens_start + (i % 10) * 5
+    seq = list(range(start, min(start + 128, cfg.cpp_tokens_start + 2048)))
     mode_tag = cfg.vision_photo_id if (i % 2 == 0) else cfg.vision_graph_id
     seq = [cfg.vision_start_id, mode_tag] + seq * 4 + [cfg.vision_end_id]
     all_data.append(seq[:256])

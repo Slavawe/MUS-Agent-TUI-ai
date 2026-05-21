@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Token ID Decoder / Demangler for MUS vocabulary
+Token ID Decoder / Demangler for Uragan 1.0 vocabulary
  Converts raw token IDs to human-readable format
 
 Usage:
@@ -12,35 +12,35 @@ import struct
 import sys
 from pathlib import Path
 
-ASCII_START = 2001
-ASCII_END = 2077
+CPP_START = 2001
+CPP_END = 2100
 MULTIMODAL_START = 2101
 MULTIMODAL_END = 2200
 
-ASCII_CHARS = {
+CPP_CHARS = {
     2001: '<PAD>',   2002: '<UNK>',   2003: '<BOS>',   2004: '<EOS>',
     2005: '<NL>',    2006: '<SPACE>', 2007: '<TAB>',
 }
 for i, code in enumerate(range(32, 127)):
-    ASCII_CHARS[2008 + i] = chr(code)
+    CPP_CHARS[2008 + i] = chr(code)
 
 def get_token_type(token_id: int) -> str:
-    if token_id < ASCII_START:
+    if token_id < CPP_START:
         return "AER"
-    elif token_id <= ASCII_END:
-        return "ASCII"
+    elif token_id <= CPP_END:
+        return "CPP"
     elif token_id >= MULTIMODAL_START and token_id <= MULTIMODAL_END:
         return "TAG"
     else:
         return "TEXT"
 
 def token_to_str(token_id: int) -> str:
-    if token_id in ASCII_CHARS:
-        return ASCII_CHARS[token_id]
-    elif token_id < ASCII_START:
+    if token_id in CPP_CHARS:
+        return CPP_CHARS[token_id]
+    elif token_id < CPP_START:
         return f"<AER:{token_id}>"
-    elif token_id <= ASCII_END:
-        return f"<ASCII:{token_id}>"
+    elif token_id <= CPP_END:
+        return f"<CPP:{token_id}>"
     elif token_id >= MULTIMODAL_START and token_id <= MULTIMODAL_END:
         return f"<TAG:{token_id}>"
     else:
@@ -61,7 +61,7 @@ def load_labels(path: str):
     return list(labels)
 
 def analyze_tokens(tokens: list):
-    stats = {'total': len(tokens), 'aer': 0, 'ascii': 0, 'tag': 0, 'text': 0, 'unique': set()}
+    stats = {'total': len(tokens), 'aer': 0, 'cpp': 0, 'tag': 0, 'text': 0, 'unique': set()}
     for t in tokens:
         tt = get_token_type(t).lower()
         stats[tt] += 1
@@ -118,7 +118,7 @@ def main():
     print(f"  Total:    {stats['total']:,}")
     print(f"  Unique:   {stats['unique']}")
     print(f"  AER:      {stats['aer']:,} ({100*stats['aer']/stats['total']:.1f}%)")
-    print(f"  ASCII:    {stats['ascii']:,} ({100*stats['ascii']/stats['total']:.1f}%)")
+    print(f"  CPP:      {stats['cpp']:,} ({100*stats['cpp']/stats['total']:.1f}%)")
     print(f"  TAG:      {stats['tag']:,} ({100*stats['tag']/stats['total']:.1f}%)")
     print(f"  TEXT:     {stats['text']:,} ({100*stats['text']/stats['total']:.1f}%)")
     

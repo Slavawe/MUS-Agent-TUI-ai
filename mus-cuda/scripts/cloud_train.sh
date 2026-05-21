@@ -13,7 +13,7 @@ if [ -z "$HF_TOKEN" ]; then
 fi
 CONFIG="${2:-auto}"
 
-echo "===== МУС Cloud Trainer v2.0 ====="
+echo "===== Uragan 1.0 — Cloud Trainer ====="
 
 # Auto-detect platform
 if [ -d "/kaggle" ]; then
@@ -37,7 +37,7 @@ elif command -v nvidia-smi &> /dev/null; then
     if [ -n "$BIN_FILE" ]; then
         python3 "$(dirname "$0")/upload_to_hf.py" \
             --token "$HF_TOKEN" \
-            --model "Shuteira/mus-uran-weights" \
+            --model "Shuteira/uragan-1.0-weights" \
             --file "$BIN_FILE" \
             --commit "Local: $(date +%Y-%m-%d_%H-%M) ${CONFIG}"
     fi

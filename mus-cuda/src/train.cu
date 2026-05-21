@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
 
     MUSConfig cfg;
     cfg.num_layers = 12;
-    cfg.vocab_size = 10301;  // BPE vocab (AER 2001 + ASCII 100 + Tags 200 + BPE 8000)
+    cfg.vocab_size = 10301;  // BPE vocab (AER 2001 + CPP 100 + Tags 200 + BPE 8000)
 
     printf("  Model: D=%d V=%d L=%d H=%d\n", cfg.hidden_dim, cfg.vocab_size, cfg.num_layers, cfg.num_heads); fflush(stdout);
 

@@ -44,18 +44,17 @@
 #endif
 
 // ══════════════════════════════════════════════════════════════════════
-//  C++ ASCII-Vision Encoder v2.0 — улучшенный кросс-платформенный
-//  токенизатор изображений в ASCII-последовательности.
+//  Uragan 1.0 — C++ Vision Encoder (CPPTokenizer)
+//  Кроссплатформенный токенизатор изображений в C++ токены.
 //
-//  Изменения относительно v1:
-//    • Исправлен баг: quant_lut_ теперь реально используется
+//  Особенности:
 //    • SIMD (SSE2/AVX2) для ускорения luminance + quantization
 //    • OpenMP-параллелизм для больших изображений
 //    • Floyd-Steinberg дизеринг в photo-режиме
 //    • Canny-подобное выделение границ (NMS + double threshold)
 //    • Поддержка видео-последовательностей кадров
-//    • Сохранение/загрузка ASCII-арта в файл
-//    • Декодирование ASCII → RGB-изображение
+//    • Сохранение/загрузка арта в файл
+//    • Декодирование токенов → RGB-изображение
 //    • Настраиваемая палитра
 //    • Windows/Linux — единый код
 // ══════════════════════════════════════════════════════════════════════
@@ -82,14 +81,14 @@ struct VisionEncoderConfig {
     const char* custom_palette = nullptr;  // nullptr = стандартная палитра
 };
 
-class ASCIITokenizer {
+class CPPTokenizer {
 public:
-    explicit ASCIITokenizer(VisionEncoderConfig cfg = {}) noexcept
+    explicit CPPTokenizer(VisionEncoderConfig cfg = {}) noexcept
         : w_(cfg.width), h_(cfg.height), mode_(cfg.mode)
         , dither_(cfg.dither), use_canny_(cfg.use_canny)
         , canny_low_(cfg.canny_low), canny_high_(cfg.canny_high)
         , num_frames_(std::max(1, cfg.num_frames))
-        , palette_(cfg.custom_palette ? cfg.custom_palette : default_ascii_palette())
+        , palette_(cfg.custom_palette ? cfg.custom_palette : default_cpp_palette())
         , palette_len_(palette_len_default())
     {
         // Gamma LUT (sRGB → linear)
@@ -165,15 +164,15 @@ public:
         return tokens;
     }
 
-    // ── Декодирование токенов → ASCII-строка ───────────────────────
+    // ── Декодирование токенов → строка ─────────────────────────────
     std::string decode_to_string(const std::vector<int64_t>& tokens) const {
         std::string chars;
         chars.reserve(h_ * w_);
         int p = palette_len_;
 
         for (int64_t t : tokens) {
-            if (t >= ASCII_START && t <= ASCII_END) {
-                int64_t idx = t - ASCII_START;
+            if (t >= CPP_START && t <= CPP_END) {
+                int64_t idx = t - CPP_START;
                 if (idx >= 0 && idx < p)
                     chars += palette_[idx];
             }
@@ -195,8 +194,8 @@ public:
 
         int idx = 0;
         for (int64_t t : tokens) {
-            if (t >= ASCII_START && t <= ASCII_END && idx < h_ * w_) {
-                int64_t c = t - ASCII_START;
+            if (t >= CPP_START && t <= CPP_END && idx < h_ * w_) {
+                int64_t c = t - CPP_START;
                 if (c >= 0 && c < p) {
                     float v = (float)c / (p - 1);
                     uint8_t gray = (uint8_t)(v * 255.0f + 0.5f);
@@ -210,8 +209,8 @@ public:
         return rgb;
     }
 
-    // ── Сохранение ASCII-арта в файл ───────────────────────────────
-    bool save_ascii(const std::string& path, const std::vector<int64_t>& tokens) const {
+    // ── Сохранение арта в файл ────────────────────────────────────
+    bool save_art(const std::string& path, const std::vector<int64_t>& tokens) const {
         std::ofstream f(path);
         if (!f.is_open()) return false;
         std::string art = decode_to_string(tokens);
@@ -219,8 +218,8 @@ public:
         return f.good();
     }
 
-    // ── Загрузка ASCII-арта из файла ───────────────────────────────
-    std::vector<int64_t> load_ascii(const std::string& path) const {
+    // ── Загрузка арта из файла ─────────────────────────────────────
+    std::vector<int64_t> load_art(const std::string& path) const {
         std::ifstream f(path);
         if (!f.is_open()) return {};
 
@@ -234,7 +233,7 @@ public:
             if (c == '\n') continue;
             for (int i = 0; i < palette_len_; i++) {
                 if (palette_[i] == c) {
-                    tokens.push_back(ASCII_START + i);
+                    tokens.push_back(CPP_START + i);
                     break;
                 }
             }
@@ -389,7 +388,7 @@ private:
                     float new_v = (float)idx / (p - 1);
                     float new_perc = new_v * new_v;  // inverse sqrt
                     float quant_err = old - new_perc;
-                    tokens.push_back(ASCII_START + idx);
+                    tokens.push_back(CPP_START + idx);
                     if (x + 1 < w_) work[y * w_ + (x + 1)] += quant_err * (7.0f / 16);
                     if (y + 1 < h_) {
                         if (x > 0) work[(y + 1) * w_ + (x - 1)] += quant_err * (3.0f / 16);
@@ -410,7 +409,7 @@ private:
                     float perceptual = sqrtf(v);
                     idx = std::min((int)(perceptual * (p - 1) + 0.5f), p - 1);
                 }
-                tokens.push_back(ASCII_START + idx);
+                tokens.push_back(CPP_START + idx);
             }
         }
         return tokens;
@@ -425,7 +424,7 @@ private:
         for (float v : vals) {
             float clamped = fmaxf(0.0f, fminf(1.0f, v));
             int idx = std::min((int)(clamped * scale + 0.5f), p - 1);
-            tokens.push_back(ASCII_START + idx);
+            tokens.push_back(CPP_START + idx);
         }
         return tokens;
     }

@@ -14,8 +14,8 @@ env:
   CUDA_VERSION: "12.5"
 
 jobs:
-  mus-cuda-build:
-    name: mus-cuda (C++17 / CUDA)
+  uragan-cuda-build:
+    name: uragan-cuda (C++17 / CUDA)
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -58,8 +58,8 @@ jobs:
           path: mus-cuda/build/
           retention-days: 3
 
-  mus-vision-build:
-    name: mus-vision (Rust / Python)
+  uragan-vision-build:
+    name: uragan-vision (Rust / Python)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -3,8 +3,9 @@ requires = ["maturin>=1.0"]
 build-backend = "maturin"
 
 [project]
-name = "mus-vision"
-version = "0.1.0"
+name = "uragan-vision"
+version = "1.0.0"
+description = "Uragan 1.0 — C++ Vision Tokenizer"
 requires-python = ">=3.11"
 dependencies = [
     "numpy",

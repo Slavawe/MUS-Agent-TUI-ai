@@ -7,20 +7,20 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from PIL import Image
 
-from mus_vision.config import ASCIIVisionConfig
+from mus_vision.config import CPPVisionConfig
 
 
-class ASCIIVisionCore:
-    """Pure-Python ASCII Vision Core с поддержкой режимов Photo/Graph.
+class CPPVisionCore:
+    """Pure-Python CPP Vision Core с поддержкой режимов Photo/Graph.
 
     Режимы:
     - Photo: gamma sRGB -> BT.709 luminance -> sqrt quantization
     - Graph: raw sRGB luminance -> Sobel edge detection -> linear quantization
     """
 
-    def __init__(self, config: Optional[ASCIIVisionConfig] = None, mode: str = "photo"):
-        self.config = config or ASCIIVisionConfig()
-        self._palette = list(self.config.ascii_palette)
+    def __init__(self, config: Optional[CPPVisionConfig] = None, mode: str = "photo"):
+        self.config = config or CPPVisionConfig()
+        self._palette = list(self.config.cpp_palette)
         self._w = self.config.vision_width
         self._h = self.config.vision_height
         self.mode = mode
@@ -126,7 +126,7 @@ class ASCIIVisionCore:
     # ── Encode ────────────────────────────────────────────────
 
     def encode(self, image: np.ndarray, mode: Optional[str] = None) -> List[int]:
-        """Изображение -> ASCII-токены в зависимости от режима."""
+        """Изображение -> C++ токены в зависимости от режима."""
         _mode = mode or self.mode
 
         if _mode == "photo":
@@ -143,7 +143,7 @@ class ASCIIVisionCore:
 
         return (
             [self.config.vision_start_id]
-            + [self.config.ascii_tokens_start + int(q[y, x])
+            + [self.config.cpp_tokens_start + int(q[y, x])
                for y in range(self._h) for x in range(self._w)]
             + [self.config.vision_end_id]
         )
@@ -165,7 +165,7 @@ class ASCIIVisionCore:
     # ── Decode ────────────────────────────────────────────────
 
     def decode_matrix(self, token_ids: List[int]) -> np.ndarray:
-        start, end = self.config.ascii_tokens_start, self.config.ascii_tokens_end
+        start, end = self.config.cpp_tokens_start, self.config.cpp_tokens_end
         tokens = [t for t in token_ids if start <= t <= end]
         idx = [t - start for t in tokens]
         n = self._h * self._w

@@ -15,7 +15,7 @@ struct ModelPreset {
     int num_heads;
     int head_dim;
     int ffn_dim;        // SwiGLU intermediate
-    int vocab_size;     // полный словарь (BPE + AER + ASCII + multimodal)
+    int vocab_size;     // полный словарь (BPE + AER + CPP + multimodal)
     float base_lr;      // рекомендуемый стартовый LR
     int warmup_steps;
     float init_std;     // stddev для инициализации весов
@@ -101,44 +101,40 @@ inline MUSConfig apply_preset(const ModelPreset& p) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-//  Мультимедийные токен-диапазоны (общие для всех моделей)
+//  Uragan 1.0 — токен-диапазоны (общие для всех моделей)
 // ══════════════════════════════════════════════════════════════════════
 
 // Токенизация:
 //   [0, 2000]     AER (Audio/Event/Registry) — ID сущностей
-//   [2001, 2077]  ASCII-Vision — символы яркостной палитры (77 chars)
-//   [2078, 2100]  Audio-токены — дискретные кванты звуковой волны (23)
+//   [2001, 2100]  CPP-Vision — C++ токены визуального кодирования (100 tokens)
 //   [2101, 2200]  Multimodal-теги — маркеры модальности (100 тегов)
 //   [2201, 48000] BPE-словарь — основной текстовый словарь (≈45800 токенов)
 
 constexpr int AER_START          = 0;
 constexpr int AER_END            = 2000;
 
-constexpr int ASCII_START        = 2001;  // ' ' (space)
-constexpr int ASCII_END          = 2077;  // '~' (last printable)
+constexpr int CPP_START          = 2001;
+constexpr int CPP_END            = 2100;
 
-constexpr int AUDIO_START        = 2078;  // дискретные аудио-кванты
-constexpr int AUDIO_END          = 2100;  // 23 quanta
-
-constexpr int MM_START           = 2101;  // мультимодальные теги
+constexpr int MM_START           = 2101;
 constexpr int MM_END             = 2200;
 
 // ─── Мультимодальные теги ─────────────────────────────────────────────
-constexpr int TAG_VISION_START   = 2101;  // <vision_start>
-constexpr int TAG_VISION_END     = 2102;  // <vision_end>
-constexpr int TAG_FRAME_SEP      = 2103;  // <frame_sep> (для видео)
-constexpr int TAG_MODE_PHOTO     = 2104;  // <mode:photo>
-constexpr int TAG_MODE_GRAPH     = 2105;  // <mode:graph>
-constexpr int TAG_AUDIO_START    = 2110;  // <audio_start>
-constexpr int TAG_AUDIO_END      = 2111;  // <audio_end>
-constexpr int TAG_SYSTEM         = 2150;  // <system>
-constexpr int TAG_USER           = 2151;  // <user>
-constexpr int TAG_ASSISTANT      = 2152;  // <assistant>
-constexpr int TAG_THINK          = 2160;  // <think>
-constexpr int TAG_ACTION         = 2170;  // <action> — AER action trigger
+constexpr int TAG_VISION_START   = 2101;
+constexpr int TAG_VISION_END     = 2102;
+constexpr int TAG_FRAME_SEP      = 2103;
+constexpr int TAG_MODE_PHOTO     = 2104;
+constexpr int TAG_MODE_GRAPH     = 2105;
+constexpr int TAG_AUDIO_START    = 2110;
+constexpr int TAG_AUDIO_END      = 2111;
+constexpr int TAG_SYSTEM         = 2150;
+constexpr int TAG_USER           = 2151;
+constexpr int TAG_ASSISTANT      = 2152;
+constexpr int TAG_THINK          = 2160;
+constexpr int TAG_ACTION         = 2170;
 
-// ─── ASCII палитра (стандартная 70 символов) ───────────────────────────
-inline const char* default_ascii_palette() {
+// ─── C++ палитра (стандартная 70 символов) ────────────────────────────
+inline const char* default_cpp_palette() {
     return " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#8&@%";
 }
 

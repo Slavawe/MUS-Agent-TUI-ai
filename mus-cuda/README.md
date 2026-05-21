@@ -1,14 +1,14 @@
-# МУС — Modular Smart System
+# Uragan 1.0 — C++ CUDA Transformer
 
 ![CI Build](https://github.com/Slavawe/MUS-AI_platform/actions/workflows/build.yml/badge.svg)
-[![Hugging Face](https://img.shields.io/badge/🤗_Weights-Shuteira/mus--uran--weights-blue)](https://huggingface.co/Shuteira/mus-uran-weights)
+[![Hugging Face](https://img.shields.io/badge/🤗_Weights-Shuteira/uragan--1.0--weights-blue)](https://huggingface.co/Shuteira/uragan-1.0-weights)
 
-**Version:** 2.0.0  
+**Version:** 1.0.0  
 **License:** MIT / Apache 2.0 (Dual)  
 **Stack:** C++17 / CUDA → Hugging Face Hub
 
-A production-grade CUDA transformer with **4-config memory auto-detection** (4GB→8GB→1B),
-**multimodal vision/audio**, and a **fully automated cloud pipeline** (Kaggle → HF).
+Production-grade CUDA transformer с **автоопределением VRAM** (4GB→8GB→1B),
+**мультимодальным C++ vision/audio** и **полным облачным пайплайном** (Kaggle → HF).
 
 ## Quick Start
 
@@ -19,7 +19,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 
 # Auto-train (detects your VRAM, picks the right model)
-./mus_train_4_6gb
+./uragan_train
 ```
 
 ## Available Configs
@@ -30,17 +30,6 @@ make -j$(nproc)
 | 700M    | 685M   | 5.8GB| RTX 3060, 4060, T4    |
 | 500M    | 498M   | 4.1GB| RTX 3050, 4050        |
 | 1B      | 1.0B   | 7.8GB| RTX 4090, A100, L4    |
-
-## Multi-Module Switching
-
-Load different weights for different tasks:
-
-```bash
-bash scripts/download_weights.sh coding     # Code generation
-bash scripts/download_weights.sh analytics  # Document parsing
-bash scripts/download_weights.sh graphics   # Diagram generation
-bash scripts/download_weights.sh sound      # Audio quantization
-```
 
 ## Cloud Pipeline
 
@@ -56,33 +45,4 @@ bash scripts/cloud_train.sh <HF_TOKEN>
 ```
 
 The final `.bin` weights are automatically uploaded to:
-**https://huggingface.co/Shuteira/mus-uran-weights**
-
-## Project Structure
-
-```
-mus-cuda/
-├── include/mus_cuda.h      # Unified header (configs, kernels, API)
-├── src/
-│   ├── kernels.cu          # FP32 CUDA kernels
-│   ├── kernels_f16.cu      # FP16 CUDA kernels + multimodal
-│   ├── train_4_6gb.cu      # Auto-detecting trainer (4-6GB)
-│   ├── train_f16.cu        # 500M training
-│   ├── memory_analysis.cu  # VRAM analysis tool
-│   └── data_loader.cu      # Multimodal dataset loader
-├── scripts/
-│   ├── kaggle_pipeline.sh  # Kaggle auto-trainer
-│   ├── colab_pipeline.sh   # Colab auto-trainer
-│   ├── cloud_train.sh      # Unified launcher
-│   ├── upload_to_hf.py     # Hugging Face uploader
-│   └── download_weights.sh # Weight downloader
-└── CMakeLists.txt          # Universal build system
-```
-
-## Build Options
-
-```bash
-cmake .. -DMUS_BUILD_CLOUD=ON     # Build for Kaggle/Colab
-cmake .. -DMUS_BUILD_MINIMAL=ON   # Minimal tools only
-cmake .. -DMUS_ENABLE_DEBUG=ON    # NaN tracing debug
-```
+**https://huggingface.co/Shuteira/uragan-1.0-weights**

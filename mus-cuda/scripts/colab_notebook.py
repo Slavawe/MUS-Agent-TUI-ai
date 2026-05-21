@@ -7,9 +7,9 @@
 # ---
 
 # %% [markdown]
-# # МУС — Modular Smart System
+# # Uragan 1.0 — C++ CUDA Training
 # ## Google Colab Auto-Trainer (Backup)
-# Run this notebook to train MUS on Colab GPUs (T4, V100, L4)
+# Run this notebook to train Uragan on Colab GPUs (T4, V100, L4)
 # with Google Drive caching.
 
 # %% [markdown]
@@ -46,7 +46,7 @@ print(f"Exit code: {result.returncode}")
 if HF_TOKEN != "your_hf_write_token_here":
     from huggingface_hub import HfApi
     api = HfApi(token=HF_TOKEN)
-    files = api.list_repo_files("Shuteira/mus-uran-weights", repo_type="model")
+    files = api.list_repo_files("Shuteira/uragan-1.0-weights", repo_type="model")
     print("Files on Hugging Face:")
     for f in files:
-        print(f"  https://huggingface.co/Shuteira/mus-uran-weights/blob/main/{f}")
+        print(f"  https://huggingface.co/Shuteira/uragan-1.0-weights/blob/main/{f}")

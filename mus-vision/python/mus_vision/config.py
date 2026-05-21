@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class ASCIIVisionConfig:
+class CPPVisionConfig:
     hidden_dim: int = 256
     num_layers: int = 4
     num_heads: int = 4
@@ -13,8 +13,8 @@ class ASCIIVisionConfig:
     vocab_size: int = 25000
     vision_width: int = 64
     vision_height: int = 32
-    ascii_palette: str = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#8&@%"
-    ascii_tokens_start: int = 2001
+    cpp_palette: str = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#8&@%"
+    cpp_tokens_start: int = 2001
     vision_start_id: int = 2101
     vision_end_id: int = 2102
     vision_photo_id: int = 2104
@@ -28,8 +28,8 @@ class ASCIIVisionConfig:
 
     @property
     def palette_len(self) -> int:
-        return len(self.ascii_palette)
+        return len(self.cpp_palette)
 
     @property
-    def ascii_tokens_end(self) -> int:
-        return self.ascii_tokens_start + self.palette_len
+    def cpp_tokens_end(self) -> int:
+        return self.cpp_tokens_start + self.palette_len

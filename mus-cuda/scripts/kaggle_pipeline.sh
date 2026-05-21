@@ -12,7 +12,7 @@ if [ -z "$HF_TOKEN" ]; then
     exit 1
 fi
 
-echo "===== МУС Kaggle Pipeline v2.0 ====="
+echo "===== Uragan 1.0 — Kaggle Pipeline ====="
 
 # 1. Detect GPU
 echo "[1/6] GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
@@ -27,7 +27,7 @@ echo "[3/6] Setting up in ${REPO_DIR}..."
 if [ -d "$REPO_DIR" ]; then
     cd "$REPO_DIR" && git pull
 else
-    git clone https://github.com/Shuteira/mus-uran-weights.git "$REPO_DIR" 2>/dev/null || {
+    git clone https://github.com/Shuteira/uragan-1.0.git "$REPO_DIR" 2>/dev/null || {
         mkdir -p "$REPO_DIR"
         cp -r /kaggle/input/mus-source/* "$REPO_DIR"/ 2>/dev/null || true
     }
@@ -60,7 +60,7 @@ BIN_FILE=$(ls -t *.bin 2>/dev/null | head -1)
 if [ -n "$BIN_FILE" ]; then
     python3 /kaggle/working/mus-cuda/scripts/upload_to_hf.py \
         --token "$HF_TOKEN" \
-        --model "Shuteira/mus-uran-weights" \
+        --model "Shuteira/uragan-1.0-weights" \
         --file "$BIN_FILE" \
         --commit "Auto: $(date +%Y-%m-%d_%H-%M) ${CONFIG}"
     echo "Uploaded: ${BIN_FILE}"

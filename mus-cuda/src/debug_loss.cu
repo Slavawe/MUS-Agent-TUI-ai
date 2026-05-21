@@ -54,7 +54,7 @@ int main() {
 
     for (int i = 0; i < num_pos * V; i++) h_logits[i] = ld(rng);
     h_labels[0] = 100;      // AER
-    h_labels[1] = 2050;     // ASCII
+    h_labels[1] = 2050;     // CPP
     h_labels[2] = 30000;    // TEXT
     h_labels[3] = -100;     // PADDING
 

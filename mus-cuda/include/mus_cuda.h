@@ -30,9 +30,9 @@ struct MUSConfig {
     int get_D_ff() const { return ffn_dim > 0 ? ffn_dim : hidden_dim * 4; }
     int get_V() const { return vocab_size; }
 
-    // ASCII токены (символы палитры)
-    int ascii_tokens_start = 2001;
-    int ascii_tokens_end = 2077;
+    // C++ токены (символы палитры)
+    int cpp_tokens_start = 2001;
+    int cpp_tokens_end = 2100;
 
     // Режимные префиксы для мультимодального выравнивания
     int vision_photo = 2104;   // <vision_photo> — фото pipeline
@@ -43,7 +43,7 @@ struct MUSConfig {
     int multimodal_tags_end = 2300;
 
     float loss_weight_aer = 15.0f;
-    float loss_weight_ascii = 5.0f;
+    float loss_weight_cpp = 5.0f;
     float loss_weight_text = 1.0f;
     
     // Turing architecture (GTX 1660 Ti has no Tensor Cores)

@@ -1,7 +1,7 @@
-# MUS Memory Optimization Guide
+# Uragan 1.0 Memory Optimization Guide
 
 ## Overview
-This document describes memory optimization strategies for MUS models to fit within 8GB VRAM constraints.
+This document describes memory optimization strategies for Uragan models to fit within 8GB VRAM constraints.
 
 ## Memory Analysis
 
