@@ -1,0 +1,7 @@
+num_samples=11010
+seq_len=512
+vocab_size=42201
+bpe_offset=2201
+bpe_vocab_size=40000
+src=OpenAssistant/oasst1
+langs=['ru', 'en']

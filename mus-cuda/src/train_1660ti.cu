@@ -152,7 +152,7 @@ int main(int argc, char** argv) {
     }
 
     // ─── Data ──────────────────────────────────────────────────────
-    std::string cache_path = "data/russian_bpe_train_cache.bin";
+    std::string cache_path = "data/train_cache.bin";
     if (argc > 1) cache_path = argv[1];
     printf("\n  ─── Data ───────────────────────────────────\n");
     TrainData td = load_binary_cache(cache_path);

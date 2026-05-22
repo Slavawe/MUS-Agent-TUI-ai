@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
 
     MUSConfig cfg;
     cfg.num_layers = 12;
-    cfg.vocab_size = 10301;  // BPE vocab (AER 2001 + CPP 100 + Tags 200 + BPE 8000)
+    cfg.vocab_size = 42201;  // BPE vocab (AER 2001 + CPP 100 + Tags 200 + BPE 40000)
 
     printf("  Model: D=%d V=%d L=%d H=%d\n", cfg.hidden_dim, cfg.vocab_size, cfg.num_layers, cfg.num_heads); fflush(stdout);
 
@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
     int rows = B * S;
 
     // ── Data ──
-    std::string cache_path = "data/russian_bpe_train_cache.bin";
+    std::string cache_path = "data/train_cache.bin";
     if (argc > 1) cache_path = argv[1];
     PhotoData pd = load_cache(cache_path);
     int N = pd.num_samples;
