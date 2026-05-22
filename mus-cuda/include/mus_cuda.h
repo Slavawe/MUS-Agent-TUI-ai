@@ -69,6 +69,19 @@ struct MUSConfig {
     int cross_attention_heads = 8;      // Cross-attention heads
 };
 
+// ══════════════════════════════════════════════════════════════════════
+//  MUS Context — CUDA streams, workspaces, cuBLAS handle
+// ══════════════════════════════════════════════════════════════════════
+struct MUSContext {
+    cudaStream_t stream;
+    cublasHandle_t cublas;
+    void* workspace;          // FP32 workspace
+    half* workspace_f16;      // FP16 workspace
+    float* workspace_f32;     // alias for workspace (FP32)
+    size_t workspace_size;    // workspace size in bytes (used by kernels.cu)
+    size_t workspace_bytes;   // workspace size in bytes (used by kernels_f16.cu)
+};
+
 // Predefined configurations
 inline MUSConfig get_500m_config() {
     MUSConfig cfg;

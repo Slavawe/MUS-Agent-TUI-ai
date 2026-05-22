@@ -68,6 +68,7 @@ MUSContext* mus_create_context(size_t ws_bytes) {
     // Both workspace and workspace_f32 point to same FP32 buffer
     ctx->workspace_f32 = ctx->workspace;
     ctx->workspace_size = ws_bytes;
+    ctx->workspace_bytes = ws_bytes;
     return ctx;
 }
 void mus_destroy_context(MUSContext* ctx) {
