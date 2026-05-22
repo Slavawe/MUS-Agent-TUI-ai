@@ -125,17 +125,28 @@ if(NOT MUS_BUILD_MINIMAL)
     mus_add_tool(mus_train_1b_multimodal src/train_1b_multimodal.cu "1B multimodal demo")
     mus_add_tool(mus_train_optimized_8gb src/train_optimized_8gb.cu "Optimized 1B for 8GB")
     mus_add_tool(mus_train_1660ti src/train_1660ti.cu "500M optimized for GTX 1660 Ti")
+    mus_add_tool(test_forward_only src/test_forward_only.cu "Forward-only diagnostic")
     mus_add_tool(mus_data_loader         src/data_loader.cu        "Multimodal data loader")
 endif()
 
 # ── Test Tools ─────────────────────────────────────────────────────────
 mus_add_tool(nan_test        src/nan_test.cu        "Gradient stability test")
+mus_add_tool(mus_h100        src/train_h100.cu      "H100 training (test model arch)")
 
 # gemm_test: standalone (no mus_core dependency)
 if(NOT MUS_BUILD_MINIMAL)
     add_executable(gemm_test src/gemm_test.cu)
     target_include_directories(gemm_test PRIVATE include)
     target_link_libraries(gemm_test PRIVATE CUDA::cuda_driver CUDA::cudart CUDA::cublas)
+endif()
+
+# tokenizer_test: CPU-only C++ tokenizer demo
+if(NOT MUS_BUILD_MINIMAL)
+    add_executable(tokenizer_test src/tokenizer_test.cpp src/tokenizer.cpp)
+    target_include_directories(tokenizer_test PRIVATE include)
+    set_target_properties(tokenizer_test PROPERTIES
+        LINKER_LANGUAGE CXX
+    )
 endif()
 
 # ── Cloud-Only Training ───────────────────────────────────────────────
@@ -150,7 +161,7 @@ endif()
 # ═══════════════════════════════════════════════════════════════════════
 install(TARGETS
     mus_inference mus_train mus_train_f16 mus_train_4_6gb
-    mus_train_1660ti
+    mus_train_1660ti mus_h100
     memory_analysis gemm_test nan_test
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
