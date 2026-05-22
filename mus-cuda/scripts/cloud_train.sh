@@ -13,7 +13,7 @@ if [ -z "$HF_TOKEN" ]; then
 fi
 CONFIG="${2:-auto}"
 
-echo "===== Uragan 1.0 — Cloud Trainer ====="
+echo "===== MUS-эфир 1.0 — Cloud Trainer ====="
 
 # Auto-detect platform
 if [ -d "/kaggle" ]; then
@@ -24,22 +24,36 @@ elif [ -d "/content/drive" ]; then
     exec bash "$(dirname "$0")/colab_pipeline.sh" "$HF_TOKEN" "$CONFIG"
 elif command -v nvidia-smi &> /dev/null; then
     echo "Platform: Local GPU"
-    # Build and train locally
     REPO_DIR="$(dirname "$0")/.."
     cd "$REPO_DIR"
     mkdir -p build && cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release
-    make -j$(nproc) mus_train_4_6gb
-    ./mus_train_4_6gb "$CONFIG"
+    cmake "$REPO_DIR" -DCMAKE_BUILD_TYPE=Release
+    make -j$(nproc) mus_train
+    echo "Build complete."
+
+    # Prepare dataset if not already done
+    if [ ! -f "$REPO_DIR/data/train_cache.bin" ]; then
+        cd "$REPO_DIR"
+        pip install -q datasets tokenizers 2>/dev/null || true
+        python3 prepare_dataset.py --max-samples 30000
+        cd build
+    fi
+
+    # Train
+    mkdir -p checkpoints
+    echo "Training MUS-эфир 1.0..."
+    ./mus_train "$REPO_DIR/data/train_cache.bin"
 
     # Upload result
-    BIN_FILE=$(ls -t *.bin 2>/dev/null | head -1)
+    BIN_FILE=$(ls -t checkpoints/*.bin 2>/dev/null | head -1)
     if [ -n "$BIN_FILE" ]; then
         python3 "$(dirname "$0")/upload_to_hf.py" \
             --token "$HF_TOKEN" \
-            --model "Shuteira/uragan-1.0-weights" \
+            --model "Shuteira/mus-ether-1.0-weights" \
             --file "$BIN_FILE" \
-            --commit "Local: $(date +%Y-%m-%d_%H-%M) ${CONFIG}"
+            --commit "Local: $(date +%Y-%m-%d_%H-%M) FP32-12L"
+    else
+        echo "No checkpoint .bin found in checkpoints/"
     fi
 else
     echo "ERROR: No supported platform detected"

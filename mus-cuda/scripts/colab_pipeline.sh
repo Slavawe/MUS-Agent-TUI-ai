@@ -12,7 +12,7 @@ if [ -z "$HF_TOKEN" ]; then
     exit 1
 fi
 
-echo "===== Uragan 1.0 — Colab Pipeline ====="
+echo "===== MUS-эфир 1.0 — Colab Pipeline ====="
 
 # 1. Mount Google Drive
 echo "[1/7] Mounting Google Drive..."
@@ -40,7 +40,7 @@ elif [ -d "$DRIVE_DIR" ]; then
     echo "  Using cached from Google Drive"
     cp -r "$DRIVE_DIR" "$REPO_DIR"
 else
-    git clone https://github.com/Shuteira/uragan-1.0.git "$REPO_DIR" 2>/dev/null || {
+    git clone https://github.com/Slavawe/MUS-Agent-TUI-ai.git "$REPO_DIR" 2>/dev/null || {
         echo "  Git clone failed, creating empty..."
         mkdir -p "$REPO_DIR"
     }
@@ -77,7 +77,7 @@ BIN_FILE=$(ls -t *.bin 2>/dev/null | head -1)
 if [ -n "$BIN_FILE" ]; then
     python3 /content/mus-cuda/scripts/upload_to_hf.py \
         --token "$HF_TOKEN" \
-        --model "Shuteira/uragan-1.0-weights" \
+        --model "Shuteira/mus-ether-1.0-weights" \
         --file "$BIN_FILE" \
         --commit "Colab: $(date +%Y-%m-%d_%H-%M) ${CONFIG}"
 

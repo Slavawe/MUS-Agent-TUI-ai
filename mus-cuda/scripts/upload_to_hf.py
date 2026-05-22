@@ -57,7 +57,7 @@ def upload_to_hf(token, model_id, bin_file, commit_message=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="МУС Hugging Face Uploader")
     parser.add_argument("--token", required=True, help="HF Write Token")
-    parser.add_argument("--model", default="Shuteira/uragan-1.0-weights", help="Model ID")
+    parser.add_argument("--model", default="Shuteira/mus-ether-1.0-weights", help="Model ID")
     parser.add_argument("--file", required=True, help="Path to .bin weights file")
     parser.add_argument("--commit", default=None, help="Commit message")
     args = parser.parse_args()

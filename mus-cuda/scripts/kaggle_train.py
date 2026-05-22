@@ -8,7 +8,7 @@ from pathlib import Path
 
 CONFIG = {
     "hf_token": os.environ.get("HF_TOKEN", ""),
-    "hf_repo": "Shuteira/uragan-1.0-weights",
+    "hf_repo": "Shuteira/mus-ether-1.0-weights",
     "model_size": os.environ.get("MUS_MODEL", "700m"),  # 400m | 700m | 1b
     "epochs": int(os.environ.get("MUS_EPOCHS", "10")),
 }
