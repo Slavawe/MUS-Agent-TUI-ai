@@ -76,9 +76,13 @@ export MUS_CKPT_DIR="$CKPT_DIR"
 cargo build --release 2>&1
 echo "  Build complete: $(ls -lh target/release/mus-core-rust | awk '{print $5}')"
 
-# ─── Запуск ────────────────────────────────────────────────────────────────
 echo ""
-echo "═══ Starting training ═══"
+echo "═══ Setup complete — starting training ═══"
+echo "  Training loop: Forward + Backward (checkpoint replay) + AdamW"
+echo "  FP16 loss_scale=1024, LR=3e-4 (warmup 500 steps), weight_decay=0.1"
+echo "  Checkpoints every 500 steps + end of epoch"
+echo "  Resume: checkpoint found → continue from saved step"
+echo ""
 echo "  Checkpoints: $CKPT_DIR"
 echo "  Data: $DATA_DIR/train_cache.bin"
 echo ""
