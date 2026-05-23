@@ -200,11 +200,9 @@ __global__ void adamw_kernel_f16(half* __restrict__ p, half* __restrict__ m, hal
     if (i >= N) return;
     float gi = __half2float(g[i]);
     float mi = __half2float(m[i]) * b1 + (1.0f - b1) * gi;
-    // v accumulates g² (~2.5e-6) — too small for FP16 normal range (≥6.1e-5)
-    // with -use_fast_math (--ftz=true). Store v × 100 so FP16 can hold it.
-    float vi = __half2float(v[i]) * 0.01f * b2 + (1.0f - b2) * gi * gi;
+    float vi = __half2float(v[i]) * b2 + (1.0f - b2) * gi * gi;
     m[i] = __float2half(mi);
-    v[i] = __float2half(vi * 100.0f);
+    v[i] = __float2half(vi);
     float denom = sqrtf(vi / c2) + eps;
     if (denom < 1e-30f) denom = 1e-30f;
     p[i] = __float2half(__half2float(p[i]) - lr * (mi / c1 / denom + wd * __half2float(p[i])));

@@ -246,6 +246,9 @@ void mus_transformer_backward_f16_ffi(MUSContext* ctx, const half* x_in, const h
 void mus_clip_gradients_f16_ffi(MUSContext* ctx, half* g, int n, float max_norm) {
     mus_clip_gradients_f16(ctx, g, n, max_norm);
 }
+void mus_unscale_f32_ffi(MUSContext* ctx, float* g, int n, float inv_scale) {
+    mus_unscale_f32(ctx, g, n, inv_scale);
+}
 void mus_unscale_gradients_f16_ffi(MUSContext* ctx, half* g, int n, float inv_scale) {
     mus_unscale_gradients_f16(ctx, g, n, inv_scale);
 }
