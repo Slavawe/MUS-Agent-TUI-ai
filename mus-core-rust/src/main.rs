@@ -99,10 +99,10 @@ fn main() {
     let steps_per_epoch = N as i32 / B;
     let mut global_step: i32 = 0;
 
-    let base_lr: f32 = 1e-4;
-    let warmup_steps: i32 = 200;
-    let loss_scale: f32 = 128.0;
-    let weight_decay: f32 = 0.01;
+    let base_lr: f32 = 3e-4;
+    let warmup_steps: i32 = 500;
+    let loss_scale: f32 = 1024.0;
+    let weight_decay: f32 = 0.1;
 
     let ckpt_dir = std::env::var("MUS_CKPT_DIR").unwrap_or_else(|_| ".".to_string());
     let ckpt_path = format!("{}/mus_checkpoint.bin", ckpt_dir);
@@ -117,7 +117,7 @@ fn main() {
 
     println!("\n  ─── Training ───────────────────────────────");
     println!("  Epochs: {}  Steps/epoch: {}", num_epochs, steps_per_epoch);
-    println!("  lr=1e-4  warmup=200  wd=0.01  ls=128  ckpt={}\n", ckpt_path);
+    println!("  lr={:.0e}  warmup={}  wd={}  ls={:.0}  ckpt={}\n", base_lr, warmup_steps, weight_decay, loss_scale, ckpt_path);
 
     let mut best_loss = 1e10f64;
 
@@ -277,7 +277,7 @@ fn main() {
                     }
                 }
 
-                clip_grads(&ctx, d_prev, rows * D, 1.0 * loss_scale);
+                clip_grads(&ctx, d_prev, rows * D, 16.0 * loss_scale);
                 transformer_bwd(&ctx, layer_in, d_prev,
                     w_qkv[l as usize].w.as_half(), w_o[l as usize].w.as_half(),
                     w_gate[l as usize].w.as_half(), w_up[l as usize].w.as_half(), w_down[l as usize].w.as_half(),
@@ -289,7 +289,7 @@ fn main() {
                     w_gate[l as usize].g.as_half(), w_up[l as usize].g.as_half(), w_down[l as usize].g.as_half(),
                     g_rn1[l as usize].as_float() as *mut f32, g_rn2[l as usize].as_float() as *mut f32,
                     B, S, D, H, d_ff);
-                clip_grads(&ctx, d_fn_out.as_half(), rows * D, 1.0 * loss_scale);
+                clip_grads(&ctx, d_fn_out.as_half(), rows * D, 16.0 * loss_scale);
                 d_prev = d_fn_out.as_half();
             }
 
@@ -302,37 +302,32 @@ fn main() {
             let inv_scale = 1.0 / loss_scale;
 
             unscale_grads(&ctx, w_embed.g.as_half(), V * D, inv_scale);
-            clip_grads(&ctx, w_embed.g.as_half(), V * D, 1.0);
             adamw_step(&ctx, w_embed.w.as_half(), w_embed.m.as_half(), w_embed.v.as_half(),
                 w_embed.g.as_half(), V * D, current_lr, 0.9, 0.999, 1e-8, weight_decay, global_step);
 
             for l in 0..L as usize {
                 unscale_grads(&ctx, w_qkv[l].g.as_half(), D * 3 * D, inv_scale);
-                clip_grads(&ctx, w_qkv[l].g.as_half(), D * 3 * D, 1.0);
                 adamw_step(&ctx, w_qkv[l].w.as_half(), w_qkv[l].m.as_half(), w_qkv[l].v.as_half(),
                     w_qkv[l].g.as_half(), D * 3 * D, current_lr, 0.9, 0.999, 1e-8, weight_decay, global_step);
 
                 unscale_grads(&ctx, w_o[l].g.as_half(), D * D, inv_scale);
-                clip_grads(&ctx, w_o[l].g.as_half(), D * D, 1.0);
                 adamw_step(&ctx, w_o[l].w.as_half(), w_o[l].m.as_half(), w_o[l].v.as_half(),
                     w_o[l].g.as_half(), D * D, current_lr, 0.9, 0.999, 1e-8, weight_decay, global_step);
 
                 unscale_grads(&ctx, w_gate[l].g.as_half(), D * d_ff, inv_scale);
-                clip_grads(&ctx, w_gate[l].g.as_half(), D * d_ff, 1.0);
                 adamw_step(&ctx, w_gate[l].w.as_half(), w_gate[l].m.as_half(), w_gate[l].v.as_half(),
                     w_gate[l].g.as_half(), D * d_ff, current_lr, 0.9, 0.999, 1e-8, weight_decay, global_step);
 
                 unscale_grads(&ctx, w_up[l].g.as_half(), D * d_ff, inv_scale);
-                clip_grads(&ctx, w_up[l].g.as_half(), D * d_ff, 1.0);
                 adamw_step(&ctx, w_up[l].w.as_half(), w_up[l].m.as_half(), w_up[l].v.as_half(),
                     w_up[l].g.as_half(), D * d_ff, current_lr, 0.9, 0.999, 1e-8, weight_decay, global_step);
 
                 unscale_grads(&ctx, w_down[l].g.as_half(), d_ff * D, inv_scale);
-                clip_grads(&ctx, w_down[l].g.as_half(), d_ff * D, 1.0);
                 adamw_step(&ctx, w_down[l].w.as_half(), w_down[l].m.as_half(), w_down[l].v.as_half(),
                     w_down[l].g.as_half(), d_ff * D, current_lr, 0.9, 0.999, 1e-8, weight_decay, global_step);
             }
 
+            // ── Logging ────────────────────────────────────────────
             let avg = total_loss / total_valid.max(1) as f64;
             if global_step % 500 == 0 {
                 save_checkpoint(&ckpt_path, global_step, &ctx,
@@ -375,8 +370,11 @@ fn load_tensor<R: std::io::Read>(f: &mut R, expected_name: &str) -> std::io::Res
     let name_len = u32::from_le_bytes(name_len_buf) as usize;
     let mut name_buf = vec![0u8; name_len];
     f.read_exact(&mut name_buf)?;
-    let name = String::from_utf8(name_buf).unwrap_or_default();
-    assert_eq!(name, expected_name, "checkpoint tensor name mismatch: {} vs {}", name, expected_name);
+    let name = String::from_utf8(name_buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    if name != expected_name {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
+            format!("expected tensor '{}', got '{}'", expected_name, name)));
+    }
     let mut size_buf = [0u8; 8];
     f.read_exact(&mut size_buf)?;
     let data_len = u64::from_le_bytes(size_buf) as usize;
@@ -385,137 +383,94 @@ fn load_tensor<R: std::io::Read>(f: &mut R, expected_name: &str) -> std::io::Res
     Ok(data)
 }
 
-fn save_checkpoint(path: &str, step: i32,
-    ctx: &MusContext,
+fn save_checkpoint(path: &str, global_step: i32, ctx: &MusContext,
     w_embed: &WeightBuf,
-    w_qkv: &[WeightBuf], w_o: &[WeightBuf],
-    w_gate: &[WeightBuf], w_up: &[WeightBuf], w_down: &[WeightBuf],
-    w_rn1: &[DeviceBuffer], w_rn2: &[DeviceBuffer],
-    fn_w: &DeviceBuffer,
-    L: i32, D: i32, d_ff: i32, V: i32)
-{
-    let tmp = format!("{}.tmp", path);
-    let mut f = std::fs::File::create(&tmp).expect("Cannot create checkpoint");
-    f.write_all(b"MUSCKPT").expect("write magic failed");
-    f.write_all(&1u32.to_le_bytes()).expect("write version failed");
-    f.write_all(&(step as i32).to_le_bytes()).expect("write step failed");
+    w_qkv: &[WeightBuf], w_o: &[WeightBuf], w_gate: &[WeightBuf],
+    w_up: &[WeightBuf], w_down: &[WeightBuf],
+    w_rn1: &[DeviceBuffer], w_rn2: &[DeviceBuffer], fn_w: &DeviceBuffer,
+    L: i32, D: i32, d_ff: i32, V: i32) {
+    use std::io::Write;
+    let mut f = std::fs::File::create(path).expect("Cannot create checkpoint");
+    f.write_all(&(global_step as u64).to_le_bytes()).unwrap();
+    let mkname = |prefix: &str, idx: i32, name: &str| -> String {
+        format!("{}_{}_{}", prefix, idx, name)
+    };
+    let mut save_to_tensor = |buf: &DeviceBuffer, name: &str| {
+        let mut host = vec![0u8; buf.num_bytes()];
+        buf.copy_to(&mut host);
+        save_tensor(&mut f, name, &host).unwrap();
+    };
 
-    let num_tensors: u32 = 3 + L as u32 * 7; // embed + fn_w + fn_g + layers × 7
-    f.write_all(&num_tensors.to_le_bytes()).expect("write count failed");
+    save_to_tensor(&w_embed.w, "embed_w");
+    save_to_tensor(&w_embed.m, "embed_m");
+    save_to_tensor(&w_embed.v, "embed_v");
 
-    // Embedding
-    eprintln!("    [save] embedding...");
-    let n = (V * D) as usize;
-    let mut host = vec![0u16; n];
-    w_embed.w.copy_to(&mut host);
-    save_tensor(&mut f, "embed.w", unsafe {
-        std::slice::from_raw_parts(host.as_ptr() as *const u8, n * 2)
-    }).unwrap();
-
-    // RMSNorm weights
-    eprintln!("    [save] fn_w...");
-    let n_fn = D as usize;
-    let mut host_fn = vec![0f32; n_fn];
-    fn_w.copy_to(&mut host_fn);
-    save_tensor(&mut f, "fn_w", unsafe {
-        std::slice::from_raw_parts(host_fn.as_ptr() as *const u8, n_fn * 4)
-    }).unwrap();
-
-    // Per-layer weights
-    for layer in 0..L as usize {
-        eprintln!("    [save] layer {}/{}...", layer + 1, L);
-        let prefix = format!("l{}", layer);
-
-        for (name, wb) in [("qkv", &w_qkv[layer]), ("o", &w_o[layer]),
-            ("gate", &w_gate[layer]), ("up", &w_up[layer]), ("down", &w_down[layer])]
-        {
-            let n = wb.w.num_bytes() / 2; // half elements
-            let mut host = vec![0u16; n];
-            wb.w.copy_to(&mut host);
-            save_tensor(&mut f, &format!("{}.{}", prefix, name), unsafe {
-                std::slice::from_raw_parts(host.as_ptr() as *const u8, n * 2)
-            }).unwrap();
-        }
-
-        for (name, db) in [("rn1", &w_rn1[layer]), ("rn2", &w_rn2[layer])] {
-            let n = db.num_bytes() / 4; // float elements
-            let mut host = vec![0f32; n];
-            db.copy_to(&mut host);
-            save_tensor(&mut f, &format!("{}.{}", prefix, name), unsafe {
-                std::slice::from_raw_parts(host.as_ptr() as *const u8, n * 4)
-            }).unwrap();
-        }
+    for l in 0..L as usize {
+        save_to_tensor(&w_qkv[l].w, &mkname("qkv", l as i32, "w"));
+        save_to_tensor(&w_qkv[l].m, &mkname("qkv", l as i32, "m"));
+        save_to_tensor(&w_qkv[l].v, &mkname("qkv", l as i32, "v"));
+        save_to_tensor(&w_o[l].w, &mkname("o", l as i32, "w"));
+        save_to_tensor(&w_o[l].m, &mkname("o", l as i32, "m"));
+        save_to_tensor(&w_o[l].v, &mkname("o", l as i32, "v"));
+        save_to_tensor(&w_gate[l].w, &mkname("gate", l as i32, "w"));
+        save_to_tensor(&w_gate[l].m, &mkname("gate", l as i32, "m"));
+        save_to_tensor(&w_gate[l].v, &mkname("gate", l as i32, "v"));
+        save_to_tensor(&w_up[l].w, &mkname("up", l as i32, "w"));
+        save_to_tensor(&w_up[l].m, &mkname("up", l as i32, "m"));
+        save_to_tensor(&w_up[l].v, &mkname("up", l as i32, "v"));
+        save_to_tensor(&w_down[l].w, &mkname("down", l as i32, "w"));
+        save_to_tensor(&w_down[l].m, &mkname("down", l as i32, "m"));
+        save_to_tensor(&w_down[l].v, &mkname("down", l as i32, "v"));
     }
-
-    std::fs::rename(&tmp, path).expect("checkpoint finalize failed");
-    eprintln!("    [save] checkpoint saved to {}", path);
+    for l in 0..L as usize {
+        save_to_tensor(&w_rn1[l], &mkname("rn1", l as i32, "w"));
+        save_to_tensor(&w_rn2[l], &mkname("rn2", l as i32, "w"));
+    }
+    save_to_tensor(fn_w, "fn_w");
 }
 
-fn load_checkpoint(path: &str,
-    ctx: &MusContext,
+fn load_checkpoint(path: &str, ctx: &MusContext,
     w_embed: &WeightBuf,
-    w_qkv: &[WeightBuf], w_o: &[WeightBuf],
-    w_gate: &[WeightBuf], w_up: &[WeightBuf], w_down: &[WeightBuf],
-    w_rn1: &[DeviceBuffer], w_rn2: &[DeviceBuffer],
-    fn_w: &DeviceBuffer,
-    L: i32, D: i32, d_ff: i32, V: i32) -> i32
-{
-    eprintln!("    [load] loading checkpoint from {}", path);
+    w_qkv: &[WeightBuf], w_o: &[WeightBuf], w_gate: &[WeightBuf],
+    w_up: &[WeightBuf], w_down: &[WeightBuf],
+    w_rn1: &[DeviceBuffer], w_rn2: &[DeviceBuffer], fn_w: &DeviceBuffer,
+    L: i32, D: i32, d_ff: i32, V: i32) -> i32 {
+    use std::io::Read;
     let mut f = std::fs::File::open(path).expect("Cannot open checkpoint");
-
-    let mut magic = [0u8; 7];
-    f.read_exact(&mut magic).expect("read magic failed");
-    assert_eq!(&magic, b"MUSCKPT", "bad checkpoint magic");
-
-    let mut version_buf = [0u8; 4];
-    f.read_exact(&mut version_buf).unwrap();
-    let _version = u32::from_le_bytes(version_buf);
-
-    let mut step_buf = [0u8; 4];
+    let mut step_buf = [0u8; 8];
     f.read_exact(&mut step_buf).unwrap();
-    let step = i32::from_le_bytes(step_buf);
+    let global_step = u64::from_le_bytes(step_buf) as i32;
 
-    let mut count_buf = [0u8; 4];
-    f.read_exact(&mut count_buf).unwrap();
-    let _num = u32::from_le_bytes(count_buf);
+    let mut load_to_buf = |buf: &DeviceBuffer, name: &str| {
+        let data = load_tensor(&mut f, name).unwrap();
+        buf.copy_from(&data);
+    };
 
-    // Embedding
-    let data = load_tensor(&mut f, "embed.w").unwrap();
-    let n = (V * D) as usize * 2;
-    assert_eq!(data.len(), n);
-    w_embed.w.copy_from(unsafe {
-        std::slice::from_raw_parts(data.as_ptr() as *const u16, n / 2)
-    });
+    load_to_buf(&w_embed.w, "embed_w");
+    load_to_buf(&w_embed.m, "embed_m");
+    load_to_buf(&w_embed.v, "embed_v");
 
-    // fn_w
-    let data = load_tensor(&mut f, "fn_w").unwrap();
-    let n_fn = D as usize * 4;
-    assert_eq!(data.len(), n_fn);
-    fn_w.copy_from(unsafe {
-        std::slice::from_raw_parts(data.as_ptr() as *const f32, n_fn / 4)
-    });
-
-    // Per-layer
-    for layer in 0..L as usize {
-        let prefix = format!("l{}", layer);
-
-        for (name, wb) in [("qkv", &w_qkv[layer]), ("o", &w_o[layer]),
-            ("gate", &w_gate[layer]), ("up", &w_up[layer]), ("down", &w_down[layer])]
-        {
-            let data = load_tensor(&mut f, &format!("{}.{}", prefix, name)).unwrap();
-            wb.w.copy_from(unsafe {
-                std::slice::from_raw_parts(data.as_ptr() as *const u16, data.len() / 2)
-            });
-        }
-
-        for (name, db) in [("rn1", &w_rn1[layer]), ("rn2", &w_rn2[layer])] {
-            let data = load_tensor(&mut f, &format!("{}.{}", prefix, name)).unwrap();
-            db.copy_from(unsafe {
-                std::slice::from_raw_parts(data.as_ptr() as *const f32, data.len() / 4)
-            });
-        }
+    for l in 0..L as usize {
+        load_to_buf(&w_qkv[l].w, &format!("qkv_{}_w", l));
+        load_to_buf(&w_qkv[l].m, &format!("qkv_{}_m", l));
+        load_to_buf(&w_qkv[l].v, &format!("qkv_{}_v", l));
+        load_to_buf(&w_o[l].w, &format!("o_{}_w", l));
+        load_to_buf(&w_o[l].m, &format!("o_{}_m", l));
+        load_to_buf(&w_o[l].v, &format!("o_{}_v", l));
+        load_to_buf(&w_gate[l].w, &format!("gate_{}_w", l));
+        load_to_buf(&w_gate[l].m, &format!("gate_{}_m", l));
+        load_to_buf(&w_gate[l].v, &format!("gate_{}_v", l));
+        load_to_buf(&w_up[l].w, &format!("up_{}_w", l));
+        load_to_buf(&w_up[l].m, &format!("up_{}_m", l));
+        load_to_buf(&w_up[l].v, &format!("up_{}_v", l));
+        load_to_buf(&w_down[l].w, &format!("down_{}_w", l));
+        load_to_buf(&w_down[l].m, &format!("down_{}_m", l));
+        load_to_buf(&w_down[l].v, &format!("down_{}_v", l));
     }
-
-    eprintln!("    [load] loaded checkpoint at step {}", step);
-    step
+    for l in 0..L as usize {
+        load_to_buf(&w_rn1[l], &format!("rn1_{}_w", l));
+        load_to_buf(&w_rn2[l], &format!("rn2_{}_w", l));
+    }
+    load_to_buf(fn_w, "fn_w");
+    global_step
 }
