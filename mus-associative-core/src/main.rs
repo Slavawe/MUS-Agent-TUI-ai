@@ -4,6 +4,7 @@ mod graph;
 mod hebbian;
 mod metrics;
 mod thinker;
+mod tui;
 
 use graph::{ConceptId, Graph, Modality};
 use hebbian::HebbianLearner;
@@ -253,6 +254,22 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let use_gpu = !args.iter().any(|a| a == "--cpu");
     let train_real = args.iter().any(|a| a == "--train-real");
+    let use_tui = args.iter().any(|a| a == "--tui");
+
+    if use_tui && use_gpu {
+        let slots = 32;
+        let max_nodes = 128;
+        let words: [(&str, u32); 18] = [
+            ("лицо", 0), ("face", 1), ("радость", 0), ("smile", 1),
+            ("грусть", 0), ("frown", 1), ("код", 0), ("rust", 0),
+            ("нейросеть", 0), ("ai", 3), ("ассоциация", 0), ("link", 3),
+            ("ascii_face", 1), ("contour", 1), ("процессор", 0), ("gpu", 0),
+            ("память", 0), ("slot", 3),
+        ];
+        let mut app = tui::App::new(&words, slots, max_nodes);
+        let _ = app.run();
+        return;
+    }
 
     if train_real {
         let data_path = std::env::args().nth(2)
