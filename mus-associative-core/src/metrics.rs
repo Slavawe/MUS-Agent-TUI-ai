@@ -19,7 +19,7 @@ pub fn report(graph: &Graph, step: usize, epoch: usize, epochs: usize) {
     println!();
 }
 
-fn saturation_bar(sat: f32, width: usize) -> String {
+pub fn saturation_bar(sat: f32, width: usize) -> String {
     let filled = (sat * width as f32).round() as usize;
     let filled = filled.min(width);
     let empty = width - filled;
