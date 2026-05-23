@@ -2,6 +2,7 @@ mod cuda_bridge;
 mod graph;
 mod hebbian;
 mod metrics;
+mod thinker;
 
 use graph::{ConceptId, Graph, Modality};
 use hebbian::HebbianLearner;
@@ -16,78 +17,57 @@ fn concept_hash(s: &str) -> ConceptId {
     h
 }
 
-fn simulate_step_cpu(graph: &mut Graph, learner: &mut HebbianLearner, rng: &mut impl Rng) {
-    let num_concepts = graph.nodes.len();
-    if num_concepts < 2 { return; }
-
-    let ids: Vec<ConceptId> = graph.nodes.keys().copied().collect();
-
-    graph.reset_activations();
-
-    let seed = ids[rng.gen_range(0..ids.len())];
-    graph.activate(seed, 3);
-
-    let mut active_set: Vec<ConceptId> = vec![seed];
-
-    let extra = rng.gen_range(1..4).min(num_concepts - 1);
-    for _ in 0..extra {
-        let id = ids[rng.gen_range(0..ids.len())];
-        if !active_set.contains(&id) {
-            active_set.push(id);
-            if let Some(node) = graph.nodes.get_mut(&id) {
-                node.activation = 1.0;
-            }
-        }
-    }
-
-    learner.observe(graph, &active_set);
-}
-
-fn simulate_step_gpu(graph: &mut cuda_bridge::CudaGraph, rng: &mut impl Rng) {
-    let num_concepts = graph.node_count() as usize;
-    if num_concepts < 2 { return; }
-
-    let ids = graph.get_node_ids();
-
-    graph.reset_activations();
-
-    let seed = ids[rng.gen_range(0..ids.len())];
-    graph.activate(seed, 3);
-
-    let mut active_set: Vec<ConceptId> = vec![seed];
-
-    let extra = rng.gen_range(1..4).min(num_concepts - 1);
-    for _ in 0..extra {
-        let id = ids[rng.gen_range(0..ids.len())];
-        if !active_set.contains(&id) {
-            active_set.push(id);
-        }
-    }
-
-    graph.hebbian_learn(&active_set);
-}
-
-fn run_cpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, slots_per_node: usize, max_nodes: usize) {
+fn run_cpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, slots_per_node: usize, max_nodes: usize) -> thinker::Thinker {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let mut graph = Graph::new(slots_per_node);
     let mut learner = HebbianLearner::new(1);
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    let mut thinker = thinker::Thinker::new();
 
     for &(label, modality) in words {
         let id = concept_hash(label);
         graph.get_or_create(id, label, modality);
+        thinker.add(id, label, modality);
     }
 
     let mut global_step = 0;
     for epoch in 1..=epochs {
-        for step in 0..steps_per_epoch {
+        for _step in 0..steps_per_epoch {
             global_step += 1;
             if global_step % 5 == 0 && graph.nodes.len() < max_nodes {
                 let new_label = format!("concept_{}", global_step);
                 let new_id = concept_hash(&new_label);
                 let mods = [Modality::Text, Modality::Vision, Modality::Composite];
-                graph.get_or_create(new_id, &new_label, mods[global_step % 3]);
+                let m = mods[global_step % 3];
+                graph.get_or_create(new_id, &new_label, m);
+                thinker.add(new_id, &new_label, m);
             }
-            simulate_step_cpu(&mut graph, &mut learner, &mut rng);
+
+            let num_concepts = graph.nodes.len();
+            if num_concepts >= 2 {
+                let ids: Vec<ConceptId> = graph.nodes.keys().copied().collect();
+                graph.reset_activations();
+                let seed = ids[rng.gen_range(0..ids.len())];
+                graph.activate(seed, 3);
+                let mut active_set: Vec<ConceptId> = vec![seed];
+                let extra = rng.gen_range(1..4).min(num_concepts - 1);
+                for _ in 0..extra {
+                    let id = ids[rng.gen_range(0..ids.len())];
+                    if !active_set.contains(&id) {
+                        active_set.push(id);
+                        if let Some(node) = graph.nodes.get_mut(&id) {
+                            node.activation = 1.0;
+                        }
+                    }
+                }
+                learner.observe(&mut graph, &active_set);
+                // Track associations in thinker
+                for i in 0..active_set.len() {
+                    for j in (i + 1)..active_set.len() {
+                        thinker.set_assoc(active_set[i], active_set[j]);
+                    }
+                }
+            }
+
             let saturation = graph.slot_saturation();
             if saturation > 0.90 {
                 graph.evict_oldest(0.05);
@@ -97,11 +77,13 @@ fn run_cpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, sl
     }
 
     println!("  Done. Всего концептов: {}", graph.nodes.len());
+    thinker
 }
 
-fn run_gpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, slots_per_node: usize, max_nodes: usize) {
+fn run_gpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, slots_per_node: usize, max_nodes: usize) -> thinker::Thinker {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let mut graph = cuda_bridge::CudaGraph::new(max_nodes as i32, slots_per_node as i32);
+    let mut thinker = thinker::Thinker::new();
 
     for &(label, modality) in words {
         let id = concept_hash(label);
@@ -112,23 +94,48 @@ fn run_gpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, sl
             Modality::Composite => 3,
         };
         graph.add_node(id, label, mod_val);
+        thinker.add(id, label, modality);
     }
 
     let mut global_step = 0;
     for epoch in 1..=epochs {
-        for step in 0..steps_per_epoch {
+        for _step in 0..steps_per_epoch {
             global_step += 1;
             if global_step % 5 == 0 && graph.node_count() < max_nodes as i32 {
                 let new_label = format!("concept_{}", global_step);
                 let new_id = concept_hash(&new_label);
                 let mods = [0, 1, 3];
-                graph.add_node(new_id, &new_label, mods[global_step % 3]);
+                let mod_vals = [Modality::Text, Modality::Vision, Modality::Composite];
+                let mi = global_step % 3;
+                graph.add_node(new_id, &new_label, mods[mi]);
+                thinker.add(new_id, &new_label, mod_vals[mi]);
             }
-            simulate_step_gpu(&mut graph, &mut rng);
+
+            let num_concepts = graph.node_count() as usize;
+            if num_concepts >= 2 {
+                let ids = graph.get_node_ids();
+                graph.reset_activations();
+                let seed = ids[rng.gen_range(0..ids.len())];
+                graph.activate(seed, 3);
+                let mut active_set: Vec<ConceptId> = vec![seed];
+                let extra = rng.gen_range(1..4).min(num_concepts - 1);
+                for _ in 0..extra {
+                    let id = ids[rng.gen_range(0..ids.len())];
+                    if !active_set.contains(&id) {
+                        active_set.push(id);
+                    }
+                }
+                graph.hebbian_learn(&active_set);
+                for i in 0..active_set.len() {
+                    for j in (i + 1)..active_set.len() {
+                        thinker.set_assoc(active_set[i], active_set[j]);
+                    }
+                }
+            }
+
             let saturation = graph.saturation();
             if saturation > 0.90 {
-                let evicted = graph.evict_oldest(0.05);
-                println!("    GPU Evict: {} старых концептов удалено", evicted);
+                graph.evict_oldest(0.05);
             }
         }
 
@@ -136,7 +143,6 @@ fn run_gpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, sl
         let saturation = graph.saturation();
         let active = graph.active_count();
         let total_nodes = graph.node_count();
-
         let sat_bar = metrics::saturation_bar(saturation, 12);
 
         println!();
@@ -151,11 +157,12 @@ fn run_gpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, sl
     }
 
     println!("  Done (GPU). Всего концептов: {}", graph.node_count());
+    thinker
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let use_gpu = !args.contains(&"--cpu".to_string());
+    let use_gpu = !args.iter().any(|a| a == "--cpu");
 
     let epochs = 3;
     let steps_per_epoch = 100;
@@ -181,7 +188,21 @@ fn main() {
         println!("  ║   Слотов на узел: {}                         ║", slots_per_node);
         println!("  ╚══════════════════════════════════════════════════╝");
         println!();
-        run_gpu(&words, epochs, steps_per_epoch, slots_per_node, max_nodes);
+
+        let thinker = run_gpu(&words, epochs, steps_per_epoch, slots_per_node, max_nodes);
+
+        println!();
+        println!("  ─── Мысли ──────────────────────────────");
+        let seeds: Vec<ConceptId> = words.iter().map(|(l, _)| concept_hash(l)).collect();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        for _ in 0..3 {
+            let seed = seeds[rng.gen_range(0..seeds.len())];
+            let lines = thinker.think(seed, 4);
+            for l in &lines {
+                println!("  {}", l);
+            }
+            println!();
+        }
     } else {
         println!("  ╔══════════════════════════════════════════════════╗");
         println!("  ║   MUS Associative Core — Hebbian Graph Engine  ║");
@@ -189,6 +210,20 @@ fn main() {
         println!("  ║   Слотов на узел: {}                         ║", slots_per_node);
         println!("  ╚══════════════════════════════════════════════════╝");
         println!();
-        run_cpu(&words, epochs, steps_per_epoch, slots_per_node, max_nodes);
+
+        let thinker = run_cpu(&words, epochs, steps_per_epoch, slots_per_node, max_nodes);
+
+        println!();
+        println!("  ─── Мысли ──────────────────────────────");
+        let seeds: Vec<ConceptId> = words.iter().map(|(l, _)| concept_hash(l)).collect();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        for _ in 0..3 {
+            let seed = seeds[rng.gen_range(0..seeds.len())];
+            let lines = thinker.think(seed, 4);
+            for l in &lines {
+                println!("  {}", l);
+            }
+            println!();
+        }
     }
 }
