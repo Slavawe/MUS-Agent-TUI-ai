@@ -43,6 +43,7 @@ int assoc_graph_activate(AssociativeGraphGPU* g, ConceptId seed, int depth);
 float assoc_graph_coherence(AssociativeGraphGPU* g);
 float assoc_graph_saturation(AssociativeGraphGPU* g);
 int assoc_graph_hebbian_learn(AssociativeGraphGPU* g, const ConceptId* active_set, int active_len);
+int assoc_graph_batch_link(AssociativeGraphGPU* g, const ConceptId* pairs, int num_pairs);
 int assoc_graph_evict_oldest(AssociativeGraphGPU* g, float ratio);
 void assoc_graph_reset_activations(AssociativeGraphGPU* g);
 int assoc_graph_active_count(AssociativeGraphGPU* g);

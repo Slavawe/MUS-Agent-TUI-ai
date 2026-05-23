@@ -17,6 +17,7 @@ extern "C" {
     fn assoc_graph_coherence_ffi(g: *mut AssociativeGraphGPU) -> f32;
     fn assoc_graph_saturation_ffi(g: *mut AssociativeGraphGPU) -> f32;
     fn assoc_graph_hebbian_learn_ffi(g: *mut AssociativeGraphGPU, active_set: *const ConceptId, active_len: i32) -> i32;
+    fn assoc_graph_batch_link_ffi(g: *mut AssociativeGraphGPU, pairs: *const ConceptId, num_pairs: i32) -> i32;
     fn assoc_graph_evict_oldest_ffi(g: *mut AssociativeGraphGPU, ratio: f32) -> i32;
     fn assoc_graph_reset_activations_ffi(g: *mut AssociativeGraphGPU);
     fn assoc_graph_active_count_ffi(g: *mut AssociativeGraphGPU) -> i32;
@@ -60,6 +61,11 @@ impl CudaGraph {
 
     pub fn saturation(&self) -> f32 {
         unsafe { assoc_graph_saturation_ffi(self.inner) }
+    }
+
+    pub fn batch_link(&mut self, pairs: &[(u64, u64)]) -> i32 {
+        let flat: Vec<u64> = pairs.iter().flat_map(|&(a, b)| vec![a, b]).collect();
+        unsafe { assoc_graph_batch_link_ffi(self.inner, flat.as_ptr(), pairs.len() as i32) }
     }
 
     pub fn hebbian_learn(&mut self, active_set: &[ConceptId]) -> i32 {

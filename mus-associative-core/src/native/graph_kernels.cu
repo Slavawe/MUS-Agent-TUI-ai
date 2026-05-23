@@ -112,6 +112,7 @@ __global__ void swap_frontier_kernel(int* frontier, int* next_frontier, int n) {
 // ═══════════════════════════════════════════════════════════════
 
 __global__ void coherence_kernel(int* assoc_count, int node_count, int* out) {
+    if (blockIdx.x > 0) return;
     __shared__ int s[256];
     int tid = threadIdx.x;
     int connected = 0;
@@ -124,7 +125,7 @@ __global__ void coherence_kernel(int* assoc_count, int node_count, int* out) {
         if (tid < sz) s[tid] += s[tid + sz];
         __syncthreads();
     }
-    if (tid == 0) atomicAdd(out, s[0]);
+    if (tid == 0) out[0] = s[0];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -132,6 +133,7 @@ __global__ void coherence_kernel(int* assoc_count, int node_count, int* out) {
 // ═══════════════════════════════════════════════════════════════
 
 __global__ void saturation_kernel(int* assoc_count, int node_count, int slots_per_node, float* out) {
+    if (blockIdx.x > 0) return;
     __shared__ unsigned long long s[256];
     int tid = threadIdx.x;
     unsigned long long total = 0;
@@ -213,10 +215,58 @@ __global__ void hebbian_kernel(ConceptId* assoc_slots, int* assoc_count,
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  Batch link: process a flat array of (src, dst) pairs
+// ═══════════════════════════════════════════════════════════════
+
+__global__ void batch_link_kernel(ConceptId* __restrict__ pair_data, int num_pairs,
+    ConceptId* __restrict__ node_ids, int node_count,
+    ConceptId* __restrict__ assoc_slots, int* __restrict__ assoc_count,
+    int slots_per_node)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_pairs) return;
+
+    ConceptId src = pair_data[idx * 2];
+    ConceptId dst = pair_data[idx * 2 + 1];
+    if (src == dst) return;
+
+    // Find src index
+    int si = d_find_idx(node_ids, node_count, src);
+    if (si < 0) return;
+    int di = d_find_idx(node_ids, node_count, dst);
+    if (di < 0) return;
+
+    // Link src -> dst
+    ConceptId* srow = assoc_slots + si * slots_per_node;
+    int scnt = assoc_count[si];
+    if (scnt < slots_per_node) {
+        int dup = 0;
+        for (int s = 0; s < scnt; s++) { if (srow[s] == dst) { dup = 1; break; } }
+        if (!dup) {
+            int pos = atomicAdd(&assoc_count[si], 1);
+            if (pos < slots_per_node) srow[pos] = dst;
+        }
+    }
+
+    // Link dst -> src
+    ConceptId* drow = assoc_slots + di * slots_per_node;
+    int dcnt = assoc_count[di];
+    if (dcnt < slots_per_node) {
+        int dup = 0;
+        for (int s = 0; s < dcnt; s++) { if (drow[s] == src) { dup = 1; break; } }
+        if (!dup) {
+            int pos = atomicAdd(&assoc_count[di], 1);
+            if (pos < slots_per_node) drow[pos] = src;
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  Active count
 // ═══════════════════════════════════════════════════════════════
 
 __global__ void active_count_kernel(float* activation, int n, int* out) {
+    if (blockIdx.x > 0) return;
     __shared__ int s[256];
     int tid = threadIdx.x;
     int cnt = 0;
@@ -229,7 +279,7 @@ __global__ void active_count_kernel(float* activation, int n, int* out) {
         if (tid < sz) s[tid] += s[tid + sz];
         __syncthreads();
     }
-    if (tid == 0) atomicAdd(out, s[0]);
+    if (tid == 0) out[0] = s[0];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -406,6 +456,26 @@ int assoc_graph_hebbian_learn(AssociativeGraphGPU* g, const ConceptId* active_se
     cudaStreamSynchronize(str);
     cudaFree(d_active);
     return total_pairs;
+}
+
+int assoc_graph_batch_link(AssociativeGraphGPU* g, const ConceptId* pairs, int num_pairs) {
+    if (!g || num_pairs < 1) return 0;
+    cudaStream_t str = get_stream(g->stream);
+
+    ConceptId* d_pairs;
+    cudaMalloc(&d_pairs, num_pairs * 2 * sizeof(ConceptId));
+    cudaMemcpyAsync(d_pairs, pairs, num_pairs * 2 * sizeof(ConceptId), cudaMemcpyHostToDevice, str);
+
+    int threads = 256;
+    int blocks = (num_pairs + threads - 1) / threads;
+
+    batch_link_kernel<<<blocks, threads, 0, str>>>(
+        d_pairs, num_pairs, g->node_ids, g->node_count,
+        g->assoc_slots, g->assoc_count, g->slots_per_node);
+
+    cudaStreamSynchronize(str);
+    cudaFree(d_pairs);
+    return num_pairs;
 }
 
 int assoc_graph_evict_oldest(AssociativeGraphGPU* g, float ratio) {

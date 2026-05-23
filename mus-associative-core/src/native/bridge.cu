@@ -36,6 +36,10 @@ int assoc_graph_hebbian_learn_ffi(AssociativeGraphGPU* g, const ConceptId* activ
     return assoc_graph_hebbian_learn(g, active_set, active_len);
 }
 
+int assoc_graph_batch_link_ffi(AssociativeGraphGPU* g, const ConceptId* pairs, int num_pairs) {
+    return assoc_graph_batch_link(g, pairs, num_pairs);
+}
+
 int assoc_graph_evict_oldest_ffi(AssociativeGraphGPU* g, float ratio) {
     return assoc_graph_evict_oldest(g, ratio);
 }

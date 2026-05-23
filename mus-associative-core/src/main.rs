@@ -1,4 +1,5 @@
 mod cuda_bridge;
+mod data;
 mod graph;
 mod hebbian;
 mod metrics;
@@ -60,7 +61,6 @@ fn run_cpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, sl
                     }
                 }
                 learner.observe(&mut graph, &active_set);
-                // Track associations in thinker
                 for i in 0..active_set.len() {
                     for j in (i + 1)..active_set.len() {
                         thinker.set_assoc(active_set[i], active_set[j]);
@@ -160,9 +160,121 @@ fn run_gpu(words: &[(&str, Modality)], epochs: usize, steps_per_epoch: usize, sl
     thinker
 }
 
+fn run_real_gpu(data_path: &str, slots_per_node: i32, vocab_size: i32) {
+    println!("  Loading data from: {}", data_path);
+    let dataset = data::TokenDataset::open(data_path, 256)
+        .expect("Failed to open dataset");
+    println!("  Samples: {}, SeqLen: {}", dataset.num_samples, dataset.seq_len);
+    println!("  Vocab: {} tokens", vocab_size);
+
+    let mut graph = cuda_bridge::CudaGraph::new(vocab_size + 1, slots_per_node);
+
+    println!("  Pre-creating {} token nodes on GPU...", vocab_size);
+    for id in 0..vocab_size {
+        let label = format!("tok_{}", id);
+        graph.add_node(id as u64, &label, 0);
+    }
+    println!("  Nodes created. node_count={}", graph.node_count());
+
+    let total_pairs: usize = dataset.num_samples * (dataset.seq_len - 1);
+    println!("  Processing {} bigram pairs...", total_pairs);
+
+    let batch_size = 500_000;
+    let mut pairs: Vec<(u64, u64)> = Vec::with_capacity(batch_size);
+    let mut processed = 0usize;
+
+    for (a, b) in dataset.pairs() {
+        pairs.push((a, b));
+        if pairs.len() >= batch_size {
+            graph.batch_link(&pairs);
+            processed += pairs.len();
+            if processed % 1_000_000 == 0 {
+                let pct = processed as f64 / total_pairs as f64 * 100.0;
+                let sat = graph.saturation();
+                println!("    {} / {} ({:.1}%)  Sat: {:.1}%", processed, total_pairs, pct, sat * 100.0);
+            }
+            pairs.clear();
+        }
+    }
+    if !pairs.is_empty() {
+        graph.batch_link(&pairs);
+        processed += pairs.len();
+    }
+
+    println!();
+    println!("  ════════════════════════════════════════");
+    println!("  Training complete!");
+    println!("  Processed pairs:    {}", processed);
+    println!("  Unique tokens:      {}", graph.node_count());
+    println!("  Coherence:          {:.1}%", graph.coherence() * 100.0);
+    println!("  Saturation:         {:.1}%", graph.saturation() * 100.0);
+
+    // Generate token sequences by walking the graph
+    println!();
+    println!("  ─── Generated token sequences ───");
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    for attempt in 0..10 {
+        let mut cur: u64 = rng.gen_range(0..vocab_size) as u64;
+        let mut tokens: Vec<u64> = Vec::new();
+        tokens.push(cur);
+
+        let mut found = false;
+        for _ in 0..30 {
+            graph.reset_activations();
+            let n_activated = graph.activate(cur, 1);
+            if n_activated <= 1 { break; }
+            let ids = graph.get_node_ids();
+            let act = graph.get_activations();
+            let neighbors: Vec<u64> = ids.iter().zip(act.iter())
+                .filter(|(&id, &a)| a > 0.5f32 && id != cur)
+                .map(|(&id, _)| id)
+                .collect();
+            if neighbors.is_empty() { break; }
+            found = true;
+            cur = neighbors[rng.gen_range(0..neighbors.len())];
+            tokens.push(cur);
+        }
+
+        if found {
+            print!("    tok[{}]", tokens[0]);
+            for &t in tokens.iter().skip(1).take(15) {
+                print!(" → tok[{}]", t);
+            }
+            if tokens.len() > 16 { print!(" …"); }
+            println!(" ({} tokens, attempt {})", tokens.len(), attempt);
+        }
+        if attempt >= 5 && found { break; }
+    }
+    println!();
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let use_gpu = !args.iter().any(|a| a == "--cpu");
+    let train_real = args.iter().any(|a| a == "--train-real");
+
+    if train_real {
+        let data_path = std::env::args().nth(2)
+            .unwrap_or_else(|| "../data/train_cache.bin".to_string());
+        let slots = std::env::args().nth(3)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(256);
+        let vocab = 48000;
+
+        if use_gpu {
+            println!("  ╔══════════════════════════════════════════════════╗");
+            println!("  ║   MUS Associative Core — Real Data Training   ║");
+            println!("  ║   Режим: GPU (CUDA), Bigram Hebbian           ║");
+            println!("  ║   Слотов на узел: {}                         ║", slots);
+            println!("  ╚══════════════════════════════════════════════════╝");
+            println!();
+            run_real_gpu(&data_path, slots, vocab);
+        } else {
+            println!("  CPU real-data training not implemented; use GPU mode");
+        }
+        return;
+    }
 
     let epochs = 3;
     let steps_per_epoch = 100;
