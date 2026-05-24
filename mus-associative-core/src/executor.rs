@@ -1,5 +1,6 @@
 use std::process::{Command, Output};
 use std::time::Instant;
+use crate::wasm_sandbox::WasmSandbox;
 
 #[derive(Debug)]
 pub struct ExecResult {
@@ -108,5 +109,40 @@ impl Executor {
         tokens.dedup();
         tokens.truncate(16);
         tokens
+    }
+
+    /// Run code in a Wasmtime sandbox instead of Python subprocess.
+    /// The `wasm_path` points to a .wasm file that exports:
+    ///   alloc(i32) -> i32   — allocate memory
+    ///   run(i32, i32) -> i32  — execute with input ptr/len, returns ptr to output
+    pub fn run_wasm(&self, wasm_path: &str, input: &str) -> ExecResult {
+        let start = Instant::now();
+        match WasmSandbox::new() {
+            Ok(sandbox) => {
+                match sandbox.run_file(wasm_path, input) {
+                    Ok(out) => ExecResult {
+                        stdout: out.stdout,
+                        stderr: out.stderr,
+                        exit_code: out.exit_code,
+                        duration_ms: out.duration_ms,
+                        timed_out: out.exit_code == 1 && out.duration_ms >= self.timeout_ms,
+                    },
+                    Err(e) => ExecResult {
+                        stdout: String::new(),
+                        stderr: format!("Wasm sandbox error: {}", e),
+                        exit_code: -1,
+                        duration_ms: start.elapsed().as_millis() as u64,
+                        timed_out: false,
+                    }
+                }
+            }
+            Err(e) => ExecResult {
+                stdout: String::new(),
+                stderr: format!("Failed to create Wasm sandbox: {}", e),
+                exit_code: -1,
+                duration_ms: start.elapsed().as_millis() as u64,
+                timed_out: false,
+            }
+        }
     }
 }

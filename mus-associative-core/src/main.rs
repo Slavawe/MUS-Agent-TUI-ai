@@ -11,6 +11,7 @@ mod hebbian;
 mod metrics;
 mod thinker;
 mod tui;
+mod wasm_sandbox;
 
 use graph::Graph;
 use graph::Modality;
@@ -639,6 +640,7 @@ fn main() {
     let concept_data = args.iter().any(|a| a == "--concept-data");
     let run_coder = args.iter().any(|a| a == "--coder");
     let auto_exec = args.iter().any(|a| a == "--auto-exec");
+    let use_wasm = args.iter().any(|a| a == "--wasm");
     let run_ascii_3d = args.iter().any(|a| a == "--ascii-3d");
     let hurricane_tui = args.iter().any(|a| a == "--hurricane-tui");
 
@@ -855,9 +857,14 @@ fn main() {
                     exec_input.trim().to_lowercase()
                 };
                 if exec_choice != "n" && exec_choice != "q" && exec_choice != "no" {
-                    println!("  ─── Executing Python ───");
                     let exec = executor::Executor::new();
-                    let result = exec.run_python(code);
+                    let result = if use_wasm {
+                        println!("  ─── Executing in Wasm sandbox ───");
+                        exec.run_wasm("compute.wasm", code)
+                    } else {
+                        println!("  ─── Executing Python ───");
+                        exec.run_python(code)
+                    };
                     if result.exit_code == 0 {
                         println!("  ✓ Exit: {}, Duration: {}ms", result.exit_code, result.duration_ms);
                         println!("  Output: {}", result.stdout.trim());

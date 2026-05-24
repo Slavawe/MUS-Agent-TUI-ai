@@ -9,8 +9,10 @@ memmap2 = "0.9"
 ratatui = "0.26"
 crossterm = "0.27"
 wasmtime = "45"
+wasmtime-wasi = "45"
 tera = "2.0.0-alpha.6"
 serde_json = "1"
+anyhow = "1"
 
 [features]
 default = ["cuda"]
