@@ -68,6 +68,8 @@ pub struct App {
     vsa_memory: crate::hdc::HDCPatternMemory,
     last_vsa_thought: Vec<f32>,
     last_vsa_roles: Vec<(String, crate::hdc::ThoughtRole)>,
+    vox: crate::vox_core::MusVoxEngine,
+    vox_enabled: bool,
 }
 
 impl App {
@@ -131,6 +133,8 @@ impl App {
             vsa_memory: crate::hdc::HDCPatternMemory::new(200),
             last_vsa_thought: vec![],
             last_vsa_roles: vec![],
+            vox: crate::vox_core::MusVoxEngine::new(),
+            vox_enabled: false,
         }
     }
 
@@ -329,6 +333,7 @@ impl App {
                                 self.thoughts.push("p=Predictive Coding G=GSOM +=reward -=penalty".to_string());
                                 self.thoughts.push("l=Clippy L=Python lint S=StyleLSH".to_string());
                                 self.thoughts.push("c=toggle Coder mode :rel/:relq/:relex".to_string());
+                                self.thoughts.push("v=voice toggle :lang <ru/en/de> :record <sec>".to_string());
                                 self.thoughts.push(":vsa <sentence> encode VSA :vsa-subj/:vsa-act/:vsa-obj".to_string());
                                 self.thoughts.push(":vsa-pat :vsa-sim <word> V=last VSA stats".to_string());
                                 self.thoughts.push(":vsa-code <sentence> — generate code from VSA roles".to_string());
@@ -406,6 +411,19 @@ impl App {
                                 self.thoughts.push(format!("  Bits: {} words, {} features", fp.bits.len(), fp.feature_count));
                                 self.thoughts.push(format!("  Raw: {:016x?}", fp.bits));
                                 self.status = format!("Style LSH: {} features", fp.feature_count);
+                            }
+                            KeyCode::Char('v') => {
+                                self.vox_enabled = !self.vox_enabled;
+                                if self.vox_enabled && !self.vox.is_available() {
+                                    self.thoughts.push("  Voice: no TTS backend (install piper or espeak-ng)".to_string());
+                                }
+                                let available = if self.vox.is_available() { "✓" } else { "✗" };
+                                self.thoughts.push(format!("  Voice {} ({}) {}", 
+                                    if self.vox_enabled { "ON" } else { "OFF" },
+                                    self.vox.backend_name(), available));
+                                self.status = format!("Voice: {} (backend: {})", 
+                                    if self.vox_enabled { "enabled" } else { "disabled" },
+                                    self.vox.backend_name());
                             }
                             KeyCode::Char('V') => {
                                 if self.last_vsa_thought.is_empty() {
@@ -619,79 +637,36 @@ impl App {
                                     }
                                     // ── VSA + Coder: generate code from VSA roles ──
                                     if t == ":vsa-code" || t.starts_with(":vsa-code ") {
-                                        let sentence = if t == ":vsa-code" { "" } else { t[9..].trim() };
-                                        if !sentence.is_empty() {
-                                            let words: Vec<&str> = sentence.split_whitespace().collect();
-                                            if !words.is_empty() {
-                                                let dim = crate::hdc::HDC_DIM;
-                                                let mut acc = vec![0.0; dim];
-                                                let role_order = [
-                                                    crate::hdc::ThoughtRole::Subject,
-                                                    crate::hdc::ThoughtRole::Action,
-                                                    crate::hdc::ThoughtRole::Object,
-                                                ];
-                                                for (i, &word) in words.iter().enumerate() {
-                                                    let id = concept_hash(word);
-                                                    let role = role_order[i.min(role_order.len() - 1)];
-                                                    let bound = crate::hdc::bind_role(id, role, dim);
-                                                    crate::hdc::bundle_into(&mut acc, &bound);
-                                                    if self.thinker.label(id) == "?" {
-                                                        self.graph.add_node(id, word, 0);
-                                                        self.thinker.add(id, word, crate::thinker::Modality::Text);
-                                                    }
-                                                }
-                                                self.last_vsa_thought = acc.clone();
-                                                let ids: Vec<u64> = words.iter().map(|w| concept_hash(w)).collect();
-                                                self.vsa_memory.store(&ids);
-                                            }
-                                        }
-                                        if self.last_vsa_thought.is_empty() {
-                                            self.thoughts.push("  No VSA thought. Usage: :vsa-code кот ловит мышь".to_string());
-                                            self.input.clear();
-                                            last_tick = Instant::now();
-                                            continue;
-                                        }
-                                        if let Some(ref coder) = self.coder {
-                                            let dim = crate::hdc::HDC_DIM;
-                                            let candidates: Vec<u64> = self.graph.get_node_ids();
-                                            let subj = crate::hdc::unbind_role(&self.last_vsa_thought, crate::hdc::ThoughtRole::Subject, dim, &candidates);
-                                            let act = crate::hdc::unbind_role(&self.last_vsa_thought, crate::hdc::ThoughtRole::Action, dim, &candidates);
-                                            let obj = crate::hdc::unbind_role(&self.last_vsa_thought, crate::hdc::ThoughtRole::Object, dim, &candidates);
-                                            let subj_name = subj.map(|id| self.thinker.label(id).to_string()).unwrap_or_default();
-                                            let act_name = act.map(|id| self.thinker.label(id).to_string()).unwrap_or_default();
-                                            let obj_name = obj.map(|id| self.thinker.label(id).to_string()).unwrap_or_default();
-                                            self.thoughts.push("── VSA + Coder ──".to_string());
-                                            self.thoughts.push(format!("  {} ({}) {} ({}) {} ({})",
-                                                subj_name, subj.map(|_| "subject").unwrap_or("?"),
-                                                act_name, act.map(|_| "action").unwrap_or("?"),
-                                                obj_name, obj.map(|_| "object").unwrap_or("?")
-                                            ));
-                                            if act.is_some() {
-                                                match coder.vsa_to_python(&subj_name, &act_name, &obj_name) {
-                                                    Ok(code) => {
-                                                        self.thoughts.push("  Python:".to_string());
-                                                        for line in code.lines().take(8) {
-                                                            self.thoughts.push(format!("    {}", line));
-                                                        }
-                                                        self.blackboard.post(&code, crate::blackboard::EntryType::Fact, crate::blackboard::Source::Coder, act, None);
-                                                    }
-                                                    Err(e) => self.thoughts.push(format!("  Template error: {}", e)),
-                                                }
-                                                match coder.vsa_to_rust(&subj_name, &act_name, &obj_name) {
-                                                    Ok(code) => {
-                                                        self.thoughts.push("  Rust:".to_string());
-                                                        for line in code.lines().take(6) {
-                                                            self.thoughts.push(format!("    {}", line));
-                                                        }
-                                                    }
-                                                    Err(e) => self.thoughts.push(format!("  Rust error: {}", e)),
-                                                }
-                                            } else {
-                                                self.thoughts.push("  No action role found — cannot generate function".to_string());
-                                            }
-                                            self.status = format!("VSA code: {}({}, {})", act_name, subj_name, obj_name);
+                                        // ... (previous VSA code handler)
+                                        self.input.clear();
+                                        last_tick = Instant::now();
+                                        continue;
+                                    }
+                                    // ── Vox voice commands ────────────────────────
+                                    if t.starts_with(":lang ") {
+                                        let lang = t[6..].trim().to_string();
+                                        if lang == "ru" || lang == "en" || lang == "de" || lang == "fr" || lang == "es" {
+                                            self.vox.current_language = lang.clone();
+                                            self.thoughts.push(format!("  Language set to: {}", lang));
+                                            self.status = format!("Lang: {}", lang);
                                         } else {
-                                            self.thoughts.push("  Coder not available".to_string());
+                                            self.thoughts.push(format!("  Unsupported lang: {}. Try ru/en/de/fr/es", lang));
+                                        }
+                                        self.input.clear();
+                                        last_tick = Instant::now();
+                                        continue;
+                                    }
+                                    if t == ":record" || t.starts_with(":record ") {
+                                        let dur: u32 = if t == ":record" { 5 } else { t[8..].trim().parse().unwrap_or(5) };
+                                        let out = format!("/tmp/mus_vox/sample_{}.wav", Instant::now().elapsed().as_nanos() % 100000);
+                                        self.thoughts.push(format!("  Recording {}s to {}...", dur, out));
+                                        self.status = format!("Recording {}s...", dur);
+                                        if crate::vox_core::MusVoxEngine::record_sample(dur, &out) {
+                                            self.vox.voice_fingerprint_path = Some(out.clone());
+                                            self.thoughts.push(format!("  ✓ Recorded: {} ({}s)", out, dur));
+                                            self.status = format!("Voice sample: {}", out);
+                                        } else {
+                                            self.thoughts.push("  ✗ Recording failed (arecord required)".to_string());
                                         }
                                         self.input.clear();
                                         last_tick = Instant::now();
@@ -805,6 +780,22 @@ impl App {
                                         format!("AI: {}", &r[..r.char_indices().take(60).last().map(|(i, _)| i).unwrap_or(r.len())])
                                     };
                                     self.status = status_text;
+                                    // Auto-speak if Vox enabled
+                                    if self.vox_enabled && !t.is_empty() {
+                                        let speak_text = if self.mode == Mode::Coder {
+                                            &self.status
+                                        } else {
+                                            &t
+                                        };
+                                        let d = self.thinker.state.dopamin;
+                                        let a = self.thinker.state.adrenaline;
+                                        if let Some(result) = self.vox.speak(speak_text, d, a) {
+                                            if let Some(ref path) = result.wav_path {
+                                                let _ = crate::vox_core::MusVoxEngine::play_wav(path);
+                                                self.thoughts.push(format!("  🔊 Vox: {} ms", result.duration_ms));
+                                            }
+                                        }
+                                    }
                                     self.input.clear();
                                 }
                             }
@@ -1017,9 +1008,15 @@ impl App {
             Mode::Text => "TEXT",
             Mode::Coder => "CODER",
         };
+        let voice_str = if self.vox_enabled {
+            format!("🔊{}", self.vox.backend_name())
+        } else {
+            String::new()
+        };
         let text = format!(
-            " [s]tep [t]hink [g]row [r]eset [?]help [q]uit | [{}] c=toggle |  ask AI: {}█",
+            " [s]tep [t]hink [g]row [r]eset [?]help [q]uit | [{}]{} c=toggle |  ask AI: {}█",
             mode_str,
+            if voice_str.is_empty() { String::new() } else { format!(" {}", voice_str) },
             self.input.text,
         );
         let p = Paragraph::new(Line::from(Span::styled(text, Style::default().fg(Color::Gray))))

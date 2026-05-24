@@ -14,6 +14,7 @@ mod reward;
 mod style_lsh;
 mod thinker;
 mod tui;
+mod vox_core;
 mod wasm_sandbox;
 
 use graph::Graph;
