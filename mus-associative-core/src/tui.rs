@@ -44,9 +44,17 @@ fn bar(filled: f32, total: usize) -> String {
     "█".repeat(n) + &"░".repeat(total.saturating_sub(n))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Mode {
+    Text,
+    Coder,
+}
+
 pub struct App {
     graph: CudaGraph,
     thinker: thinker::Thinker,
+    coder: Option<crate::coder::Coder>,
+    mode: Mode,
     thoughts: Vec<String>,
     step: usize,
     max_nodes: usize,
@@ -78,9 +86,20 @@ impl App {
         thoughts.push("MUS Associative Core — TUI Test Suite".to_string());
         thoughts.push("Keys: s=step t=think Enter=inject ?=help q=quit".to_string());
 
+        let coder = match crate::coder::Coder::new() {
+            Ok(c) => Some(c),
+            Err(e) => {
+                let msg = format!("Coder init error: {}. Coder mode disabled.", e);
+                thoughts.push(msg);
+                None
+            }
+        };
+
         App {
             graph,
             thinker,
+            coder,
+            mode: Mode::Text,
             thoughts,
             step: 0,
             max_nodes: max_nodes as usize,
@@ -273,10 +292,20 @@ impl App {
                     if key.kind == KeyEventKind::Press {
                         match key.code {
                             KeyCode::Char('q') | KeyCode::Esc => break,
+                            KeyCode::Char('c') => {
+                                if self.coder.is_some() {
+                                    self.mode = if self.mode == Mode::Text { Mode::Coder } else { Mode::Text };
+                                    self.status = if self.mode == Mode::Coder { "Coder mode".into() } else { "Text mode".into() };
+                                    self.thoughts.push(format!("Switched to {:?} mode", self.mode));
+                                } else {
+                                    self.status = "Coder not available".into();
+                                }
+                            }
                             KeyCode::Char('?') => {
                                 self.thoughts.push("s=step t=think r=reset g=grow Enter=chat".to_string());
                                 self.thoughts.push("p=Predictive Coding G=GSOM +=reward -=penalty".to_string());
-                                self.thoughts.push("l=Clippy L=Python lint :rel/:relq/:relex".to_string());
+                                self.thoughts.push("l=Clippy L=Python lint S=StyleLSH".to_string());
+                                self.thoughts.push("c=toggle Coder mode :rel/:relq/:relex".to_string());
                                 self.thoughts.push(":rel subj rel obj — store relation".to_string());
                                 self.thoughts.push(":relq subj rel — query relation".to_string());
                                 self.thoughts.push(":relex — load example relations".to_string());
@@ -462,22 +491,62 @@ impl App {
                                             self.thoughts.push(format!("🌱 GSOM: capacity {} → {}", old_cap, new_cap));
                                         }
                                     }
-                                    // Generate AI response: FSM templates or classic
+                                    // Generate response based on mode
                                     self.update_chem();
-                                    let response = if self.use_fsm {
-                                        self.thinker.generate_thought(seed_id, &self.graph)
+                                    if self.mode == Mode::Coder {
+                                        if let Some(ref coder) = self.coder {
+                                            let top = self.graph.get_top_activations(16);
+                                            let chain: Vec<(u64, &str, f32)> = top.iter()
+                                                .map(|(id, sc)| (*id, self.thinker.label(*id), *sc))
+                                                .collect();
+                                            self.thoughts.push("── Coder ──".to_string());
+                                            // Show chain
+                                            let chain_names: Vec<&str> = chain.iter().map(|(_, n, _)| *n).collect();
+                                            self.thoughts.push(format!("  Chain: {}", chain_names.join(" → ")));
+                                            // AST
+                                            let ast_text = coder.chain_to_ast_text(&chain);
+                                            self.thoughts.push(format!("  AST: {}", ast_text));
+                                            // Generate Python
+                                            match coder.chain_to_python(&chain) {
+                                                Ok(code) => {
+                                                    self.thoughts.push("  Python:".to_string());
+                                                    for line in code.lines().take(8) {
+                                                        self.thoughts.push(format!("    {}", line));
+                                                    }
+                                                    self.status = "Coder: code generated".to_string();
+                                                    self.blackboard.post(&code, EntryType::Fact, Source::Coder, Some(seed_id), None);
+                                                }
+                                                Err(e) => {
+                                                    self.thoughts.push(format!("  Template error: {}", e));
+                                                }
+                                            }
+                                        }
                                     } else {
-                                        self.thinker.generate_response(&t, &self.graph)
-                                    };
-                                    self.thoughts.push(format!("AI: {}", response));
-                                    // Post Uran response to Blackboard
-                                    self.blackboard.post(&response, EntryType::Fact, Source::Uran, Some(seed_id), None);
+                                        let response = if self.use_fsm {
+                                            self.thinker.generate_thought(seed_id, &self.graph)
+                                        } else {
+                                            self.thinker.generate_response(&t, &self.graph)
+                                        };
+                                        self.thoughts.push(format!("AI: {}", response));
+                                        // Post Uran response to Blackboard
+                                        self.blackboard.post(&response, EntryType::Fact, Source::Uran, Some(seed_id), None);
+                                    }
                                     // STDP: Decay after response generation
                                     self.graph.stdp_decay(0.92);
                                     if self.thoughts.len() > 100 {
                                         self.thoughts.drain(0..self.thoughts.len() - 80);
                                     }
-                                    self.status = format!("AI: {}", &response[..response.char_indices().take(60).last().map(|(i, _)| i).unwrap_or(response.len())]);
+                                    let status_text = if self.mode == Mode::Coder {
+                                        "Coder: code generated ✓".to_string()
+                                    } else {
+                                        let r = if self.use_fsm {
+                                            self.thinker.generate_thought(seed_id, &self.graph)
+                                        } else {
+                                            self.thinker.generate_response(&t, &self.graph)
+                                        };
+                                        format!("AI: {}", &r[..r.char_indices().take(60).last().map(|(i, _)| i).unwrap_or(r.len())])
+                                    };
+                                    self.status = status_text;
                                     self.input.clear();
                                 }
                             }
@@ -686,8 +755,13 @@ impl App {
     }
 
     fn draw_footer(&self, frame: &mut Frame, area: Rect) {
+        let mode_str = match self.mode {
+            Mode::Text => "TEXT",
+            Mode::Coder => "CODER",
+        };
         let text = format!(
-            " [s]tep [t]hink [g]row [r]eset [?]help [q]uit | :rel/:relq  |  ask AI: {}█",
+            " [s]tep [t]hink [g]row [r]eset [?]help [q]uit | [{}] c=toggle |  ask AI: {}█",
+            mode_str,
             self.input.text,
         );
         let p = Paragraph::new(Line::from(Span::styled(text, Style::default().fg(Color::Gray))))
