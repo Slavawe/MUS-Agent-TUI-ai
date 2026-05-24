@@ -806,14 +806,24 @@ fn main() {
         println!("    {}", ast.render_text(0));
         println!();
         println!("  Generated Rust:");
-        match coder.templates.render_chain(&ast, "rust") {
-            Ok(code) => println!("{}", code),
+        match coder.render_with_style(&chain, "rust") {
+            Ok((code, style)) => {
+                println!("{}", code);
+                if let Some((ref file, dist)) = style {
+                    println!("  (style match: {} dist={:.2})", file, dist);
+                }
+            }
             Err(e) => eprintln!("  Template error: {}", e),
         }
         println!();
         println!("  Generated Python:");
-        match coder.templates.render_chain(&ast, "python") {
-            Ok(code) => println!("{}", code),
+        match coder.render_with_style(&chain, "python") {
+            Ok((code, style)) => {
+                println!("{}", code);
+                if let Some((ref file, dist)) = style {
+                    println!("  (style match: {} dist={:.2})", file, dist);
+                }
+            }
             Err(e) => eprintln!("  Template error: {}", e),
         }
         println!();
@@ -875,13 +885,24 @@ fn main() {
             let node = coder.ast_gen.from_chain(&chain);
             println!("  AST: {}", node.render_text(0));
             println!("  Rust:");
-            match coder.templates.render_chain(&node, "rust") {
-                Ok(code) => { for line in code.lines() { println!("    {}", line); } }
+            match coder.render_with_style(&chain, "rust") {
+                Ok((code, style)) => {
+                    for line in code.lines() { println!("    {}", line); }
+                    if let Some((ref file, dist)) = style {
+                        println!("    (style: {} dist={:.2})", file, dist);
+                    }
+                }
                 Err(e) => eprintln!("    Template error: {}", e),
             }
             println!("  Python:");
-            let python_code = match coder.templates.render_chain(&node, "python") {
-                Ok(code) => { for line in code.lines() { println!("    {}", line); } Some(code) }
+            let python_code = match coder.render_with_style(&chain, "python") {
+                Ok((code, style)) => {
+                    for line in code.lines() { println!("    {}", line); }
+                    if let Some((ref file, dist)) = style {
+                        println!("    (style: {} dist={:.2})", file, dist);
+                    }
+                    Some(code)
+                }
                 Err(e) => { eprintln!("    Template error: {}", e); None }
             };
             board.post(&format!("Coder: generated code for '{}'", trimmed), blackboard::EntryType::Answer, blackboard::Source::Coder, Some(search_id), None);

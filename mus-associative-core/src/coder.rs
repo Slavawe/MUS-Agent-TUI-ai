@@ -66,16 +66,38 @@ impl AstNode {
         match self {
             AstNode::Chain(nodes) => {
                 let items: Vec<serde_json::Value> = nodes.iter().map(|n| {
-                    serde_json::json!({"text": n.render_text(0), "type": n.node_type_label()})
+                    let text = n.render_text(0);
+                    // Extract just the leaf variable name for clean templates
+                    let name = match n {
+                        AstNode::Var(v) => v.clone(),
+                        AstNode::Lit(l) => l.clone(),
+                        AstNode::Number(v) => v.to_string(),
+                        AstNode::FnCall { name, .. } => name.clone(),
+                        AstNode::BinOp { left, .. } => {
+                            match left.as_ref() {
+                                AstNode::Var(v) => v.clone(),
+                                _ => text.clone(),
+                            }
+                        }
+                        _ => text.clone(),
+                    };
+                    serde_json::json!({"text": text, "name": name, "type": n.node_type_label()})
                 }).collect();
                 ctx.insert("chain", &items);
+                ctx.insert("seed", &items.first().and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("input"));
                 ctx
             }
             other => {
+                let text = other.render_text(0);
+                let name = match other {
+                    AstNode::Var(v) => v.clone(),
+                    _ => text.clone(),
+                };
                 let items = vec![
-                    serde_json::json!({"text": other.render_text(0), "type": other.node_type_label()})
+                    serde_json::json!({"text": text, "name": name, "type": other.node_type_label()})
                 ];
                 ctx.insert("chain", &items);
+                ctx.insert("seed", &items.first().and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("input"));
                 ctx
             }
         }
@@ -219,33 +241,68 @@ impl TemplateEngine {
 }
 
 const RUST_FN_TEMPLATE: &str = r#"
-fn generated({{ chain | map(attribute="text") | join(sep=", ") }}) {
-    println!("chain: {% for item in chain %}{{ item.text }} → {% endfor %}end");
+// Generated from association chain:
+//   {% for item in chain %}{{ item.text }}{% if not loop.last %} → {% endif %}{% endfor %}
+fn generated(seed: &str) -> String {
+    let mut result = seed.to_string();
+    {% for item in chain %}
+    result.push_str("_{{ item.name }}");
+    {% endfor %}
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_generated() {
+        let out = generated("start");
+        assert!(!out.is_empty());
+    }
 }
 "#;
 
 const RUST_MAIN_TEMPLATE: &str = r#"
 fn main() {
-    let chain = vec![{% for item in chain %}"{{ item.text }}",{% endfor %}];
-    println!("Chain: {:?}", chain);
+    let chain: Vec<&str> = vec![{% for item in chain %}"{{ item.name }}",{% endfor %}];
+    println!("Pipeline: {:?}", chain);
+    let result = chain.join(" -> ");
+    println!("Result: {}", result);
 }
 "#;
 
 const PYTHON_TEMPLATE: &str = r#"
-def generated():
-    chain = [{% for item in chain %}"{{ item.text }}",{% endfor %}]
-    print(" → ".join(chain))
-generated()
+def generated(seed: str = "{{ seed }}") -> str:
+    """
+    Association chain: {% for item in chain %}{{ item.text }}{% if not loop.last %} → {% endif %}{% endfor %}
+    """
+    pipeline = [{% for item in chain %}"{{ item.name }}",{% endfor %}]
+    result = seed
+    for step in pipeline:
+        result = f"{result}_{step}"
+    return result
+
+if __name__ == "__main__":
+    result = generated()
+    print(f"Result: {result}")
 "#;
 
 const BASH_TEMPLATE: &str = r#"#!/bin/bash
-chain=({% for item in chain %}{{ item.text }} {% endfor %})
-echo "Chain: ${chain[@]}"
+# Association chain: {% for item in chain %}{{ item.text }}{% if not loop.last %} → {% endif %}{% endfor %}
+chain=({% for item in chain %}"{{ item.name }}" {% endfor %})
+seed="${1:-"{{ seed }}"}"
+result="$seed"
+for step in "${chain[@]}"; do
+    result="${result}_${step}"
+done
+echo "Result: $result"
 "#;
 
 const DESC_TEMPLATE: &str = r#"
 Association chain: {% for item in chain %}{{ item.text }}{% if not loop.last %} → {% endif %}{% endfor %}
 This chain contains {{ chain | length }} concepts.
+Seed: "{{ seed }}"
+Pipeline: {{ seed }}{% for item in chain %} → {{ item.name }}{% endfor %}
 "#;
 
 // ─── WASM Sandbox ────────────────────────────────────────────
