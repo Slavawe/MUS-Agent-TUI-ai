@@ -95,15 +95,26 @@ impl App {
             }
         };
 
+        Self::from_components(graph, thinker, coder, thoughts, max_nodes as usize, slots)
+    }
+
+    pub fn from_components(
+        graph: CudaGraph,
+        thinker: thinker::Thinker,
+        coder: Option<crate::coder::Coder>,
+        initial_thoughts: Vec<String>,
+        max_nodes: usize,
+        slots_per_node: i32,
+    ) -> Self {
         App {
             graph,
             thinker,
             coder,
             mode: Mode::Text,
-            thoughts,
+            thoughts: initial_thoughts,
             step: 0,
-            max_nodes: max_nodes as usize,
-            slots_per_node: slots,
+            max_nodes,
+            slots_per_node,
             input: InputField::new(),
             status: "Ready.".to_string(),
             blackboard: Blackboard::new(500),

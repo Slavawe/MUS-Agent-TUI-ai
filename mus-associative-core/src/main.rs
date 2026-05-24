@@ -646,6 +646,44 @@ fn main() {
     let use_wasm = args.iter().any(|a| a == "--wasm");
     let run_ascii_3d = args.iter().any(|a| a == "--ascii-3d");
     let hurricane_tui = args.iter().any(|a| a == "--hurricane-tui");
+    let unified = args.iter().any(|a| a == "--unified");
+
+    if unified {
+        let path = args.get(2).cloned().unwrap_or_else(|| "concept_data.tsv".to_string());
+        let slots = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(64);
+        let num_epochs = args.iter()
+            .position(|a| a == "--epochs")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(3);
+        let max_nodes: i32 = args.iter()
+            .position(|a| a == "--max-nodes")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10000);
+
+        let graph = cuda_bridge::CudaGraph::new(max_nodes, slots);
+        let mut thinker = thinker::Thinker::new();
+        let pairs = load_concept_tsv(&path, &graph, &mut thinker);
+        println!("  Loaded {} pairs, {} concepts", pairs.len(), graph.node_count());
+        println!("  Training...");
+        train_concept_graph(&graph, &pairs, num_epochs);
+
+        let coder = match crate::coder::Coder::new() {
+            Ok(c) => Some(c),
+            Err(e) => {
+                eprintln!("  Coder init warning: {}. Coder mode disabled.", e);
+                None
+            }
+        };
+        let mut thoughts = Vec::new();
+        thoughts.push("MUS Associative Core — Unified TUI (Text + Coder)".to_string());
+        thoughts.push("Keys: c=toggle Coder mode Enter=inject ?=help q=quit".to_string());
+
+        let mut app = tui::App::from_components(graph, thinker, coder, thoughts, max_nodes as usize, slots);
+        let _ = app.run();
+        return;
+    }
 
     if hurricane_tui {
         let path = args.get(2).cloned().unwrap_or_else(|| "concept_data.tsv".to_string());
