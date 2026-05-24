@@ -8,6 +8,7 @@ mod executor;
 mod graph;
 mod hdc;
 mod hebbian;
+mod linter;
 mod metrics;
 mod reward;
 mod thinker;

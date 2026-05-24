@@ -276,7 +276,7 @@ impl App {
                             KeyCode::Char('?') => {
                                 self.thoughts.push("s=step t=think r=reset g=grow Enter=chat".to_string());
                                 self.thoughts.push("p=Predictive Coding G=GSOM +=reward -=penalty".to_string());
-                                self.thoughts.push(":rel/:relq/:relex — relation commands".to_string());
+                                self.thoughts.push("l=Clippy L=Python lint :rel/:relq/:relex".to_string());
                                 self.thoughts.push(":rel subj rel obj — store relation".to_string());
                                 self.thoughts.push(":relq subj rel — query relation".to_string());
                                 self.thoughts.push(":relex — load example relations".to_string());
@@ -309,6 +309,33 @@ impl App {
                                 self.thinker.state.dopamin = (self.thinker.state.dopamin + penalty).max(0.1);
                                 self.status = format!("Penalty {:.2} (dopamin={:.2})", penalty, self.thinker.state.dopamin);
                                 self.thoughts.push(format!("- Penalty: streak reset"));
+                            }
+                            KeyCode::Char('l') => {
+                                let result = crate::linter::Linter::clippy(".");
+                                let score = result.score();
+                                self.thoughts.push(format!("── Clippy: {} errors, {} warnings (score={:.2})", result.errors, result.warnings, score));
+                                if score > 0.8 {
+                                    self.thinker.state.dopamin = (self.thinker.state.dopamin + 0.1).min(2.5);
+                                    self.status = format!("Clean code! +dopamin ({:.2})", self.thinker.state.dopamin);
+                                } else if score < 0.3 {
+                                    self.thinker.state.dopamin = (self.thinker.state.dopamin - 0.15).max(0.1);
+                                    self.status = format!("Lint errors! -dopamin ({:.2})", self.thinker.state.dopamin);
+                                } else {
+                                    self.status = format!("Lint score: {:.2} ({})", score, result.duration_ms);
+                                }
+                            }
+                            KeyCode::Char('L') => {
+                                // Python syntax check mode
+                                let result = crate::linter::Linter::py_compile("/tmp/mus_gen.py");
+                                let score = result.score();
+                                self.thoughts.push(format!("── Python lint: {} errors (score={:.2})", result.errors, score));
+                                if score > 0.8 {
+                                    self.thinker.state.dopamin = (self.thinker.state.dopamin + 0.1).min(2.5);
+                                    self.status = format!("Valid Python! +dopamin ({:.2})", self.thinker.state.dopamin);
+                                } else {
+                                    self.thinker.state.dopamin = (self.thinker.state.dopamin - 0.1).max(0.1);
+                                    self.status = format!("Python errors ({:.2})", self.thinker.state.dopamin);
+                                }
                             }
                             KeyCode::Char('G') => {
                                 let sat = self.graph.saturation();
