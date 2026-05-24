@@ -680,7 +680,7 @@ fn main() {
         thoughts.push("MUS Associative Core — Unified TUI (Text + Coder)".to_string());
         thoughts.push("Keys: c=toggle Coder mode Enter=inject ?=help q=quit".to_string());
 
-        let mut app = tui::App::from_components(graph, thinker, coder, thoughts, max_nodes as usize, slots);
+        let mut app = tui::App::from_components(graph, thinker, coder, thoughts, max_nodes as usize, slots, auto_exec, use_wasm);
         let _ = app.run();
         return;
     }

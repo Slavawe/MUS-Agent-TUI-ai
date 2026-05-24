@@ -63,6 +63,8 @@ pub struct App {
     status: String,
     blackboard: Blackboard,
     use_fsm: bool,
+    auto_exec: bool,
+    use_wasm: bool,
 }
 
 impl App {
@@ -95,7 +97,7 @@ impl App {
             }
         };
 
-        Self::from_components(graph, thinker, coder, thoughts, max_nodes as usize, slots)
+        Self::from_components(graph, thinker, coder, thoughts, max_nodes as usize, slots, false, true)
     }
 
     pub fn from_components(
@@ -105,6 +107,8 @@ impl App {
         initial_thoughts: Vec<String>,
         max_nodes: usize,
         slots_per_node: i32,
+        auto_exec: bool,
+        use_wasm: bool,
     ) -> Self {
         App {
             graph,
@@ -119,6 +123,8 @@ impl App {
             status: "Ready.".to_string(),
             blackboard: Blackboard::new(500),
             use_fsm: false,
+            auto_exec,
+            use_wasm,
         }
     }
 
@@ -529,6 +535,27 @@ impl App {
                                                     }
                                                     self.status = "Coder: code generated".to_string();
                                                     self.blackboard.post(&code, EntryType::Fact, Source::Coder, Some(seed_id), None);
+                                                    // Auto-execute generated code
+                                                    if self.auto_exec {
+                                                        let exec = crate::executor::Executor::new();
+                                                        self.thoughts.push("  ─── Exec ───".to_string());
+                                                        let result = if self.use_wasm {
+                                                            exec.run_wasm("compute.wasm", &code)
+                                                        } else {
+                                                            exec.run_python(&code)
+                                                        };
+                                                        self.thoughts.push(format!("  Exit: {}, {}ms", result.exit_code, result.duration_ms));
+                                                        if !result.stdout.is_empty() {
+                                                            self.thoughts.push(format!("  Out: {}", result.stdout.trim()));
+                                                        }
+                                                        if result.exit_code == 0 {
+                                                            let top_acts = self.graph.get_top_activations(8);
+                                                            let pattern: Vec<u64> = top_acts.iter().map(|(id, _)| *id).collect();
+                                                            let boost = self.thinker.reward.reward(&pattern, self.thinker.state.dopamin);
+                                                            self.thinker.state.dopamin = (self.thinker.state.dopamin + boost).min(2.5);
+                                                            self.thoughts.push(format!("  Reward +{:.2}", boost));
+                                                        }
+                                                    }
                                                 }
                                                 Err(e) => {
                                                     self.thoughts.push(format!("  Template error: {}", e));
