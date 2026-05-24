@@ -165,9 +165,7 @@ impl App {
         let cuda_state = self.thinker.state.to_cuda();
         self.graph.activate_chem(seed, 3, &cuda_state);
         self.graph.top_k(8);
-        // STDP: Boost during step training
-        self.graph.stdp_boost(0.2);
-        // Predictive Coding during step training
+        // Predictive Coding during step training (STDP boost is fused into BFS kernel)
         self.graph.predictive_step(0.2);
 
         let mut active: Vec<ConceptId> = vec![seed];
@@ -218,9 +216,7 @@ impl App {
         let cuda_state = self.thinker.state.to_cuda();
         self.graph.activate_chem(seed, 8, &cuda_state);
         self.graph.top_k(12);
-        // STDP: Boost during thinking
-        self.graph.stdp_boost(0.1);
-        // Predictive Coding during thinking
+        // STDP boost is fused into BFS kernel; only Predictive Coding here
         self.graph.predictive_step(0.15);
         let lines = self.thinker.think(&self.graph, seed, 8);
         // STDP: Decay after thinking
@@ -394,9 +390,7 @@ impl App {
                                     let cuda_state = self.thinker.state.to_cuda();
                                     self.graph.activate_chem(seed_id, 5, &cuda_state);
                                     self.graph.top_k(12);
-                                    // STDP: Boost active edges during activation
-                                    self.graph.stdp_boost(0.15);
-                                    // Predictive Coding: evaluate prediction errors
+                                    // STDP boost is fused into BFS; Predictive Coding only
                                     self.graph.predictive_step(0.2);
 
                                     // GSOM: auto-grow if saturated and dopamine high

@@ -64,6 +64,7 @@ __global__ void bfs_expand_kernel_csr(
             if (weight < threshold) continue;
         }
 
+        // ── Fused: Activation ──────────────────────────────────
         visited[nidx] = 1;
         float energy_factor = 0.8f + weight * 0.2f;
         activation[nidx] = current_energy * (ENERGY_DECAY * energy_factor);
@@ -75,9 +76,18 @@ __global__ void bfs_expand_kernel_csr(
             }
         }
         
-        // STDP: Boost short-term weight for this edge
+        // ── Fused: STDP boost for traversed edge ──────────────
         if (short_values) {
-            atomicAdd(&short_values[i], 0.1f * weight);
+            atomicAdd(&short_values[i], 0.15f * weight);
+            if (short_values[i] > 0.5f) short_values[i] = 0.5f;
+        }
+    }
+
+    // ── Fused: Decay short_values of this node's edges slightly ──
+    // (prevents runaway STDP accumulation across BFS levels)
+    for (int i = start; i < end; i++) {
+        if (short_values) {
+            short_values[i] *= 0.97f;
         }
     }
 }
