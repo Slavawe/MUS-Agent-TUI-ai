@@ -51,6 +51,20 @@ pub fn bundle_into(acc: &mut [f32], other: &[f32]) {
     }
 }
 
+/// Clean up a real-valued vector back to bipolar (±1) by sign threshold.
+/// This removes noise from superposition and improves unbind recovery.
+pub fn cleanup_bipolar(v: &mut [f32]) {
+    for x in v.iter_mut() {
+        *x = if *x > 0.0 { 1.0 } else { -1.0 };
+    }
+}
+
+/// Bundle then cleanup: superposition + sign binarization.
+pub fn bundle_clean(acc: &mut [f32], other: &[f32]) {
+    bundle_into(acc, other);
+    cleanup_bipolar(acc);
+}
+
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -95,9 +109,11 @@ pub fn bind_role(concept_id: ConceptId, role: ThoughtRole, dim: usize) -> Vec<f3
 }
 
 /// Decode a concept from a role-bound thought vector by unbinding with role
+/// Applies cleanup (sign binarization) after unbind for noise reduction.
 pub fn unbind_role(thought: &[f32], role: ThoughtRole, dim: usize, candidates: &[ConceptId]) -> Option<ConceptId> {
     let rhv = role.hv(dim);
-    let decoded = unbind(thought, &rhv);
+    let mut decoded = unbind(thought, &rhv);
+    cleanup_bipolar(&mut decoded);
     let mut best = None;
     let mut best_sim = -1.0f32;
     for &cid in candidates {
@@ -112,7 +128,7 @@ pub fn unbind_role(thought: &[f32], role: ThoughtRole, dim: usize, candidates: &
 }
 
 /// Encode a triple (subject, action, object) into one thought vector:
-/// V_thought = (V_subj ⊗ V_subj_role) ⊕ (V_act ⊗ V_act_role) ⊕ (V_obj ⊗ V_obj_role)
+/// V_thought = sum(bind(V_subj, V_subj_role) + bind(V_act, V_act_role) + bind(V_obj, V_obj_role))
 pub fn encode_triple(subj: ConceptId, act: ConceptId, obj: ConceptId, dim: usize) -> Vec<f32> {
     let mut acc = vec![0.0; dim];
     bundle_into(&mut acc, &bind_role(subj, ThoughtRole::Subject, dim));
