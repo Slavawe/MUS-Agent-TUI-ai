@@ -517,12 +517,15 @@ impl App {
                                             // AST
                                             let ast_text = coder.chain_to_ast_text(&chain);
                                             self.thoughts.push(format!("  AST: {}", ast_text));
-                                            // Generate Python
-                                            match coder.chain_to_python(&chain) {
-                                                Ok(code) => {
+                                            // Generate Python with style match
+                                            match coder.render_with_style(&chain, "python") {
+                                                Ok((code, style_match)) => {
                                                     self.thoughts.push("  Python:".to_string());
                                                     for line in code.lines().take(8) {
                                                         self.thoughts.push(format!("    {}", line));
+                                                    }
+                                                    if let Some((ref style_file, ref dist)) = style_match {
+                                                        self.thoughts.push(format!("  Style match: {} (dist={:.2})", style_file, dist));
                                                     }
                                                     self.status = "Coder: code generated".to_string();
                                                     self.blackboard.post(&code, EntryType::Fact, Source::Coder, Some(seed_id), None);

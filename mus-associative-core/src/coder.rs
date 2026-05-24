@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 use tera::{Tera, Context};
 
 pub type ConceptId = u64;
@@ -303,15 +304,62 @@ pub struct Coder {
     pub ast_gen: AstGenerator,
     pub templates: TemplateEngine,
     pub sandbox: Sandbox,
+    pub style_lsh: crate::style_lsh::StyleLSH,
+    pub style_fingerprints: Vec<(String, crate::style_lsh::StyleFingerprint)>,
+    pub best_style_match: Option<String>,
 }
 
 impl Coder {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Coder {
+        let mut coder = Coder {
             ast_gen: AstGenerator::new(),
             templates: TemplateEngine::new()?,
             sandbox: Sandbox::new()?,
-        })
+            style_lsh: crate::style_lsh::StyleLSH::default(),
+            style_fingerprints: Vec::new(),
+            best_style_match: None,
+        };
+        coder.scan_directory(".");
+        Ok(coder)
+    }
+
+    pub fn scan_directory(&mut self, dir: &str) {
+        let dir = Path::new(dir);
+        if !dir.is_dir() { return; }
+        let patterns = ["*.rs", "*.py", "*.sh", "*.js", "*.ts"];
+        for pattern in &patterns {
+            let glob_pattern = dir.join(pattern).to_string_lossy().to_string();
+            if let Ok(entries) = glob::glob(&glob_pattern) {
+                for entry in entries.flatten() {
+                    if let Ok(code) = std::fs::read_to_string(&entry) {
+                        let fp = self.style_lsh.analyze_code(&code);
+                        self.style_fingerprints.push((entry.to_string_lossy().to_string(), fp));
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn find_best_style_match(&self, code: &str) -> Option<(String, f32)> {
+        let fp = self.style_lsh.analyze_code(code);
+        self.style_fingerprints.iter()
+            .map(|(name, existing)| (name.clone(), fp.distance(existing)))
+            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .filter(|(_, dist)| *dist < 0.5)
+    }
+
+    pub fn render_with_style(&self, chain: &[(ConceptId, &str, f32)], lang: &str)
+        -> Result<(String, Option<(String, f32)>), tera::Error>
+    {
+        let code = if lang == "rust" {
+            self.chain_to_rust(chain)?
+        } else if lang == "python" || lang == "py" {
+            self.chain_to_python(chain)?
+        } else {
+            self.chain_to_text(chain)?
+        };
+        let style = self.find_best_style_match(&code);
+        Ok((code, style))
     }
 
     pub fn chain_to_rust(&self, chain: &[(ConceptId, &str, f32)]) -> Result<String, tera::Error> {
