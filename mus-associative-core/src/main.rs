@@ -9,6 +9,7 @@ mod graph;
 mod hdc;
 mod hebbian;
 mod metrics;
+mod reward;
 mod thinker;
 mod tui;
 mod wasm_sandbox;
@@ -872,6 +873,13 @@ fn main() {
                             println!("  stderr: {}", result.stderr.trim());
                         }
 
+                        // ── Reward: successful execution ──────────────
+                        let top_acts = graph.get_top_activations(8);
+                        let reward_pattern: Vec<u64> = top_acts.iter().map(|(id, _)| *id).collect();
+                        let boost = thinker.reward.reward(&reward_pattern, thinker.state.dopamin);
+                        thinker.state.dopamin = (thinker.state.dopamin + boost).min(2.5);
+                        println!("  Reward +{:.2} (dopamin: {:.2})", boost, thinker.state.dopamin);
+
                         // ── Feedback: parse output → inject into graph ──
                         let output_tokens = executor::Executor::parse_output_to_tokens(&result.stdout);
                         if !output_tokens.is_empty() {
@@ -908,6 +916,12 @@ fn main() {
                     } else {
                         println!("  ✗ Exit: {}, stderr: {}", result.exit_code, result.stderr.trim());
                         board.post(&format!("Exec error: {}", result.stderr.trim()), blackboard::EntryType::Fact, blackboard::Source::System, Some(search_id), None);
+                        // ── Penalty: execution failed ────────────────
+                        let top_acts = graph.get_top_activations(8);
+                        let penalty_pattern: Vec<u64> = top_acts.iter().map(|(id, _)| *id).collect();
+                        let penalty = thinker.reward.penalize(&penalty_pattern, thinker.state.dopamin);
+                        thinker.state.dopamin = (thinker.state.dopamin + penalty).max(0.1);
+                        println!("  Penalty {:.2} (dopamin: {:.2})", penalty, thinker.state.dopamin);
                     }
                 }
                 if exec_choice == "q" { break; }

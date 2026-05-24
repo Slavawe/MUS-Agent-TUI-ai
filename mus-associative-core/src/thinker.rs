@@ -1,6 +1,7 @@
 pub use crate::graph::Modality;
 use crate::cuda_bridge::{CudaGraph, CudaSystemState};
 use crate::hdc::{self, HDCPatternMemory, ThoughtRole};
+use crate::reward::RewardSystem;
 use rand::Rng;
 use rand::SeedableRng;
 use std::collections::HashMap;
@@ -99,6 +100,7 @@ static CONCEPT_NAMES: &[&str] = &[
 
 pub struct Thinker {
     pub state: SystemState,
+    pub reward: RewardSystem,
     pub names: Vec<String>,
     pub labels: HashMap<ConceptId, String>,
     pub associations: HashMap<ConceptId, Vec<ConceptId>>,
@@ -110,6 +112,7 @@ impl Thinker {
         let names: Vec<String> = CONCEPT_NAMES.iter().map(|s| s.to_string()).collect();
         Thinker {
             state: SystemState::new(),
+            reward: RewardSystem::new(),
             names,
             labels: HashMap::new(),
             associations: HashMap::new(),

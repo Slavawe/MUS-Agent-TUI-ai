@@ -275,7 +275,8 @@ impl App {
                             KeyCode::Char('q') | KeyCode::Esc => break,
                             KeyCode::Char('?') => {
                                 self.thoughts.push("s=step t=think r=reset g=grow Enter=chat".to_string());
-                                self.thoughts.push("p=Predictive Coding G=GSOM grow :rel/:relq/:relex".to_string());
+                                self.thoughts.push("p=Predictive Coding G=GSOM +=reward -=penalty".to_string());
+                                self.thoughts.push(":rel/:relq/:relex — relation commands".to_string());
                                 self.thoughts.push(":rel subj rel obj — store relation".to_string());
                                 self.thoughts.push(":relq subj rel — query relation".to_string());
                                 self.thoughts.push(":relex — load example relations".to_string());
@@ -292,6 +293,22 @@ impl App {
                             KeyCode::Char('p') => {
                                 self.graph.predictive_step(0.2);
                                 self.status = "Predictive Coding step".to_string();
+                            }
+                            KeyCode::Char('+') | KeyCode::Char('=') => {
+                                let ids = self.graph.get_top_activations(8);
+                                let pattern: Vec<u64> = ids.iter().map(|(id, _)| *id).collect();
+                                let boost = self.thinker.reward.reward(&pattern, self.thinker.state.dopamin);
+                                self.thinker.state.dopamin = (self.thinker.state.dopamin + boost).min(2.5);
+                                self.status = format!("Reward +{:.2} (dopamin={:.2})", boost, self.thinker.state.dopamin);
+                                self.thoughts.push(format!("+ Reward: streak={}", self.thinker.reward.streak));
+                            }
+                            KeyCode::Char('_') | KeyCode::Char('-') => {
+                                let ids = self.graph.get_top_activations(8);
+                                let pattern: Vec<u64> = ids.iter().map(|(id, _)| *id).collect();
+                                let penalty = self.thinker.reward.penalize(&pattern, self.thinker.state.dopamin);
+                                self.thinker.state.dopamin = (self.thinker.state.dopamin + penalty).max(0.1);
+                                self.status = format!("Penalty {:.2} (dopamin={:.2})", penalty, self.thinker.state.dopamin);
+                                self.thoughts.push(format!("- Penalty: streak reset"));
                             }
                             KeyCode::Char('G') => {
                                 let sat = self.graph.saturation();
