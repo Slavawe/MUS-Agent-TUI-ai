@@ -331,6 +331,7 @@ impl App {
                                 self.thoughts.push("c=toggle Coder mode :rel/:relq/:relex".to_string());
                                 self.thoughts.push(":vsa <sentence> encode VSA :vsa-subj/:vsa-act/:vsa-obj".to_string());
                                 self.thoughts.push(":vsa-pat :vsa-sim <word> V=last VSA stats".to_string());
+                                self.thoughts.push(":vsa-code <sentence> — generate code from VSA roles".to_string());
                                 self.thoughts.push(":rel subj rel obj — store relation".to_string());
                                 self.thoughts.push(":relq subj rel — query relation".to_string());
                                 self.thoughts.push(":relex — load example relations".to_string());
@@ -612,6 +613,86 @@ impl App {
                                         let sim = crate::hdc::cosine_similarity(&self.last_vsa_thought, &chv);
                                         self.thoughts.push(format!("  sim({}) = {:.4}", target, sim));
                                         self.status = format!("VSA sim: {:.4}", sim);
+                                        self.input.clear();
+                                        last_tick = Instant::now();
+                                        continue;
+                                    }
+                                    // ── VSA + Coder: generate code from VSA roles ──
+                                    if t == ":vsa-code" || t.starts_with(":vsa-code ") {
+                                        let sentence = if t == ":vsa-code" { "" } else { t[9..].trim() };
+                                        if !sentence.is_empty() {
+                                            let words: Vec<&str> = sentence.split_whitespace().collect();
+                                            if !words.is_empty() {
+                                                let dim = crate::hdc::HDC_DIM;
+                                                let mut acc = vec![0.0; dim];
+                                                let role_order = [
+                                                    crate::hdc::ThoughtRole::Subject,
+                                                    crate::hdc::ThoughtRole::Action,
+                                                    crate::hdc::ThoughtRole::Object,
+                                                ];
+                                                for (i, &word) in words.iter().enumerate() {
+                                                    let id = concept_hash(word);
+                                                    let role = role_order[i.min(role_order.len() - 1)];
+                                                    let bound = crate::hdc::bind_role(id, role, dim);
+                                                    crate::hdc::bundle_into(&mut acc, &bound);
+                                                    if self.thinker.label(id) == "?" {
+                                                        self.graph.add_node(id, word, 0);
+                                                        self.thinker.add(id, word, crate::thinker::Modality::Text);
+                                                    }
+                                                }
+                                                self.last_vsa_thought = acc.clone();
+                                                let ids: Vec<u64> = words.iter().map(|w| concept_hash(w)).collect();
+                                                self.vsa_memory.store(&ids);
+                                            }
+                                        }
+                                        if self.last_vsa_thought.is_empty() {
+                                            self.thoughts.push("  No VSA thought. Usage: :vsa-code кот ловит мышь".to_string());
+                                            self.input.clear();
+                                            last_tick = Instant::now();
+                                            continue;
+                                        }
+                                        if let Some(ref coder) = self.coder {
+                                            let dim = crate::hdc::HDC_DIM;
+                                            let candidates: Vec<u64> = self.graph.get_node_ids();
+                                            let subj = crate::hdc::unbind_role(&self.last_vsa_thought, crate::hdc::ThoughtRole::Subject, dim, &candidates);
+                                            let act = crate::hdc::unbind_role(&self.last_vsa_thought, crate::hdc::ThoughtRole::Action, dim, &candidates);
+                                            let obj = crate::hdc::unbind_role(&self.last_vsa_thought, crate::hdc::ThoughtRole::Object, dim, &candidates);
+                                            let subj_name = subj.map(|id| self.thinker.label(id).to_string()).unwrap_or_default();
+                                            let act_name = act.map(|id| self.thinker.label(id).to_string()).unwrap_or_default();
+                                            let obj_name = obj.map(|id| self.thinker.label(id).to_string()).unwrap_or_default();
+                                            self.thoughts.push("── VSA + Coder ──".to_string());
+                                            self.thoughts.push(format!("  {} ({}) {} ({}) {} ({})",
+                                                subj_name, subj.map(|_| "subject").unwrap_or("?"),
+                                                act_name, act.map(|_| "action").unwrap_or("?"),
+                                                obj_name, obj.map(|_| "object").unwrap_or("?")
+                                            ));
+                                            if act.is_some() {
+                                                match coder.vsa_to_python(&subj_name, &act_name, &obj_name) {
+                                                    Ok(code) => {
+                                                        self.thoughts.push("  Python:".to_string());
+                                                        for line in code.lines().take(8) {
+                                                            self.thoughts.push(format!("    {}", line));
+                                                        }
+                                                        self.blackboard.post(&code, crate::blackboard::EntryType::Fact, crate::blackboard::Source::Coder, act, None);
+                                                    }
+                                                    Err(e) => self.thoughts.push(format!("  Template error: {}", e)),
+                                                }
+                                                match coder.vsa_to_rust(&subj_name, &act_name, &obj_name) {
+                                                    Ok(code) => {
+                                                        self.thoughts.push("  Rust:".to_string());
+                                                        for line in code.lines().take(6) {
+                                                            self.thoughts.push(format!("    {}", line));
+                                                        }
+                                                    }
+                                                    Err(e) => self.thoughts.push(format!("  Rust error: {}", e)),
+                                                }
+                                            } else {
+                                                self.thoughts.push("  No action role found — cannot generate function".to_string());
+                                            }
+                                            self.status = format!("VSA code: {}({}, {})", act_name, subj_name, obj_name);
+                                        } else {
+                                            self.thoughts.push("  Coder not available".to_string());
+                                        }
                                         self.input.clear();
                                         last_tick = Instant::now();
                                         continue;

@@ -67,7 +67,6 @@ impl AstNode {
             AstNode::Chain(nodes) => {
                 let items: Vec<serde_json::Value> = nodes.iter().map(|n| {
                     let text = n.render_text(0);
-                    // Extract just the leaf variable name for clean templates
                     let name = match n {
                         AstNode::Var(v) => v.clone(),
                         AstNode::Lit(l) => l.clone(),
@@ -85,6 +84,22 @@ impl AstNode {
                 }).collect();
                 ctx.insert("chain", &items);
                 ctx.insert("seed", &items.first().and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("input"));
+                ctx
+            }
+            AstNode::FnCall { name, args } => {
+                let text = self.render_text(0);
+                let items = vec![serde_json::json!({"text": text, "name": name, "type": "fn_call"})];
+                ctx.insert("chain", &items);
+                ctx.insert("seed", name);
+                let arg_names: Vec<String> = args.iter().map(|a| {
+                    match a {
+                        AstNode::Var(v) => v.clone(),
+                        AstNode::Lit(l) => l.clone(),
+                        _ => a.render_text(0),
+                    }
+                }).collect();
+                ctx.insert("fn_name", name);
+                ctx.insert("fn_args", &arg_names);
                 ctx
             }
             other => {
@@ -198,6 +213,32 @@ impl AstGenerator {
             self.known_fns.push(name.to_string());
         }
     }
+
+    /// Build AST from VSA role-parsed sentence: action(subject, object)
+    pub fn from_vsa(&self, subj: &str, act: &str, obj: &str) -> AstNode {
+        let subj_clean: String = subj.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
+        let act_clean: String = act.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
+        let obj_clean: String = obj.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
+
+        if act_clean.is_empty() {
+            return AstNode::Var(if subj_clean.is_empty() { "input".into() } else { subj_clean });
+        }
+
+        let mut args = Vec::new();
+        if !subj_clean.is_empty() {
+            args.push(AstNode::Var(subj_clean));
+        }
+        if !obj_clean.is_empty() {
+            args.push(AstNode::Var(obj_clean));
+        }
+
+        if self.known_fns.contains(&act_clean) {
+            AstNode::FnCall { name: act_clean, args }
+        } else {
+            // Unrecognized action — wrap as generic call
+            AstNode::FnCall { name: act_clean, args }
+        }
+    }
 }
 
 impl Default for AstGenerator {
@@ -219,6 +260,8 @@ impl TemplateEngine {
             ("python", PYTHON_TEMPLATE),
             ("bash", BASH_TEMPLATE),
             ("desc", DESC_TEMPLATE),
+            ("python_vsa", PYTHON_VSA_TEMPLATE),
+            ("rust_vsa", RUST_VSA_TEMPLATE),
         ])?;
         Ok(TemplateEngine { tera })
     }
@@ -234,6 +277,17 @@ impl TemplateEngine {
             "py" | "python" => "python",
             "sh" | "bash" => "bash",
             "desc" | "text" => "desc",
+            _ => "desc",
+        };
+        self.render(tmpl, &ctx)
+    }
+
+    /// Render using VSA-aware templates (fn_name + fn_args)
+    pub fn render_vsa(&self, ast: &AstNode, lang: &str) -> Result<String, tera::Error> {
+        let ctx = ast.to_tera_context();
+        let tmpl = match lang {
+            "rust" => "rust_vsa",
+            "py" | "python" => "python_vsa",
             _ => "desc",
         };
         self.render(tmpl, &ctx)
@@ -303,6 +357,48 @@ Association chain: {% for item in chain %}{{ item.text }}{% if not loop.last %} 
 This chain contains {{ chain | length }} concepts.
 Seed: "{{ seed }}"
 Pipeline: {{ seed }}{% for item in chain %} → {{ item.name }}{% endfor %}
+"#;
+
+// ─── VSA-aware templates ─────────────────────────────────────
+// These use fn_name + fn_args context (set by FnCall::to_tera_context)
+
+const PYTHON_VSA_TEMPLATE: &str = r#"
+def {{ fn_name }}({% if fn_args %}{{ fn_args | join(sep=", ") }}{% else %}data{% endif %}):
+    """
+    VSA-parsed function: {{ fn_name }}({{ fn_args | join(sep=", ") }})
+    """
+    result = "{{ fn_name }} called with"
+    {% for arg in fn_args %}
+    result = f"{result} {arg}={ {{ arg }} }"
+    {% endfor %}
+    return result
+
+if __name__ == "__main__":
+    {% if fn_args %}result = {{ fn_name }}({% for arg in fn_args %}"{{ arg }}"{% if not loop.last %}, {% endif %}{% endfor %}){% else %}result = {{ fn_name }}(){% endif %}
+    print(result)
+"#;
+
+const RUST_VSA_TEMPLATE: &str = r#"
+/// VSA-parsed: {{ fn_name }}({{ fn_args | join(sep=", ") }})
+fn {{ fn_name }}({% for arg in fn_args %}{{ arg }}: &str{% if not loop.last %}, {% endif %}{% endfor %}) -> String {
+    let mut result = String::from("{{ fn_name }} called with");
+    {% for arg in fn_args %}
+    result.push_str(&format!(" {}=", {{ arg }}));
+    {% endfor %}
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_{{ fn_name }}() {
+        {% if fn_args %}let out = {{ fn_name }}({% for arg in fn_args %}"test"{% if not loop.last %}, {% endif %}{% endfor %});
+        {% else %}let out = {{ fn_name }}();
+        {% endif %}
+        assert!(!out.is_empty());
+    }
+}
 "#;
 
 // ─── WASM Sandbox ────────────────────────────────────────────
@@ -443,5 +539,16 @@ impl Coder {
         -> Result<Option<wasmtime::Val>, wasmtime::Error>
     {
         self.sandbox.eval(wasm, func, args)
+    }
+
+    /// Generate code from VSA-parsed sentence: action(subject, object)
+    pub fn vsa_to_python(&self, subj: &str, act: &str, obj: &str) -> Result<String, tera::Error> {
+        let ast = self.ast_gen.from_vsa(subj, act, obj);
+        self.templates.render_chain(&ast, "python")
+    }
+
+    pub fn vsa_to_rust(&self, subj: &str, act: &str, obj: &str) -> Result<String, tera::Error> {
+        let ast = self.ast_gen.from_vsa(subj, act, obj);
+        self.templates.render_chain(&ast, "rust")
     }
 }
