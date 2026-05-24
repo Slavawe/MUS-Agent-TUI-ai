@@ -911,4 +911,171 @@ int assoc_graph_stdp_get_weights(AssociativeGraphGPU* g, int node_idx, float* ds
     return n;
 }
 
+// ─── Predictive Coding Kernel ──────────────────────────────────
+// After BFS, each active node checks if its neighbors were
+// correctly predicted. Correct predictions → strengthen,
+// prediction errors → depotentiate (surprise signal).
+#define PREDICTION_THRESHOLD 0.15f
+#define SURPRISE_THRESHOLD   0.40f
+
+__global__ void predictive_coding_kernel(
+    float* activation,
+    int* row_ptr,
+    int* col_indices,
+    float* values,
+    float* short_values,
+    int capacity,
+    float learning_rate
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= capacity) return;
+    if (activation[i] <= 0.0f) return;
+
+    int start = row_ptr[i];
+    int end = row_ptr[i + 1];
+    float act_i = activation[i];
+
+    for (int k = start; k < end; k++) {
+        int j = col_indices[k];
+        if (j < 0 || j >= capacity) continue;
+
+        float weight = values[k] + short_values[k];
+        if (weight > 1.0f) weight = 1.0f;
+        if (weight < 0.01f) continue;
+
+        // Prediction: what energy should neighbor j have?
+        float predicted = act_i * weight * ENERGY_DECAY;
+        // Actual activation of neighbor
+        float actual = activation[j];
+        // Prediction error
+        float error = fabsf(predicted - actual);
+
+        if (error < PREDICTION_THRESHOLD) {
+            // Prediction correct → strengthen
+            float boost = learning_rate * (1.0f - error / PREDICTION_THRESHOLD);
+            atomicAdd(&short_values[k], boost * weight);
+            if (short_values[k] > 0.3f) short_values[k] = 0.3f;
+        } else if (error > SURPRISE_THRESHOLD) {
+            // Surprise → depotentiate
+            float penalty = learning_rate * (error / SURPRISE_THRESHOLD);
+            atomicAdd(&short_values[k], -penalty * weight);
+            if (short_values[k] < 0.0f) short_values[k] = 0.0f;
+        }
+    }
+}
+
+// ─── GSOM Growth: grow CSR matrix capacity ──────────────────────
+// Allocates new larger buffers, copies old data, frees old buffers.
+int assoc_graph_grow(AssociativeGraphGPU* g, int new_capacity) {
+    if (!g || new_capacity <= g->capacity) return -1;
+
+    int old_capacity = g->capacity;
+    int new_max_edges = new_capacity * (g->max_edges / g->capacity);
+
+    // Allocate new buffers
+    ConceptId* new_node_ids;
+    char* new_node_labels;
+    int* new_node_modality;
+    int* new_row_ptr;
+    int* new_col_indices;
+    float* new_values;
+    float* new_short_values;
+    float* new_activation;
+    ConceptId* new_frontier;
+    ConceptId* new_next_frontier;
+    int* new_visited;
+    int* new_degree;
+
+    cudaMalloc(&new_node_ids, new_capacity * sizeof(ConceptId));
+    cudaMalloc(&new_node_labels, new_capacity * MAX_LABEL_LEN);
+    cudaMalloc(&new_node_modality, new_capacity * sizeof(int));
+    cudaMalloc(&new_row_ptr, (new_capacity + 1) * sizeof(int));
+    cudaMalloc(&new_col_indices, new_max_edges * sizeof(int));
+    cudaMalloc(&new_values, new_max_edges * sizeof(float));
+    cudaMalloc(&new_short_values, new_max_edges * sizeof(float));
+    cudaMalloc(&new_activation, new_capacity * sizeof(float));
+    cudaMalloc(&new_frontier, new_capacity * sizeof(ConceptId));
+    cudaMalloc(&new_next_frontier, new_capacity * sizeof(ConceptId));
+    cudaMalloc(&new_visited, new_capacity * sizeof(int));
+    cudaMalloc(&new_degree, new_capacity * sizeof(int));
+
+    // Copy old data to new buffers
+    cudaMemcpy(new_node_ids, g->node_ids, old_capacity * sizeof(ConceptId), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_node_labels, g->node_labels, old_capacity * MAX_LABEL_LEN, cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_node_modality, g->node_modality, old_capacity * sizeof(int), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_row_ptr, g->row_ptr, (old_capacity + 1) * sizeof(int), cudaMemcpyDeviceToDevice);
+    // Preserve row_ptr[capacity] which holds num_edges
+    int old_num_edges;
+    cudaMemcpy(&old_num_edges, &g->row_ptr[old_capacity], sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(new_col_indices, g->col_indices, old_num_edges * sizeof(int), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_values, g->values, old_num_edges * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_short_values, g->short_values, old_num_edges * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_activation, g->activation, old_capacity * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_frontier, g->frontier, old_capacity * sizeof(ConceptId), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_next_frontier, g->next_frontier, old_capacity * sizeof(ConceptId), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_visited, g->visited, old_capacity * sizeof(int), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(new_degree, g->degree, old_capacity * sizeof(int), cudaMemcpyDeviceToDevice);
+
+    // Zero out new rows/columns (capacity beyond old_capacity)
+    cudaMemset(&new_node_ids[old_capacity], 0, (new_capacity - old_capacity) * sizeof(ConceptId));
+    cudaMemset(&new_node_labels[old_capacity * MAX_LABEL_LEN], 0, (new_capacity - old_capacity) * MAX_LABEL_LEN);
+    cudaMemset(&new_node_modality[old_capacity], 0, (new_capacity - old_capacity) * sizeof(int));
+    cudaMemset(&new_row_ptr[old_capacity + 1], 0, (new_capacity - old_capacity) * sizeof(int));
+    cudaMemset(&new_activation[old_capacity], 0, (new_capacity - old_capacity) * sizeof(float));
+    cudaMemset(&new_frontier[old_capacity], 0, (new_capacity - old_capacity) * sizeof(ConceptId));
+    cudaMemset(&new_next_frontier[old_capacity], 0, (new_capacity - old_capacity) * sizeof(ConceptId));
+    cudaMemset(&new_visited[old_capacity], 0, (new_capacity - old_capacity) * sizeof(int));
+    cudaMemset(&new_degree[old_capacity], 0, (new_capacity - old_capacity) * sizeof(int));
+
+    // Copy row_ptr[capacity] (num_edges) to new row_ptr[new_capacity]
+    cudaMemcpy(&new_row_ptr[new_capacity], &new_row_ptr[old_capacity], sizeof(int), cudaMemcpyDeviceToDevice);
+
+    // Free old buffers
+    cudaFree(g->node_ids);
+    cudaFree(g->node_labels);
+    cudaFree(g->node_modality);
+    cudaFree(g->row_ptr);
+    cudaFree(g->col_indices);
+    cudaFree(g->values);
+    cudaFree(g->short_values);
+    cudaFree(g->activation);
+    cudaFree(g->frontier);
+    cudaFree(g->next_frontier);
+    cudaFree(g->frontier_next_count);
+    cudaFree(g->visited);
+    cudaFree(g->degree);
+
+    // Update pointers
+    g->node_ids = new_node_ids;
+    g->node_labels = new_node_labels;
+    g->node_modality = new_node_modality;
+    g->row_ptr = new_row_ptr;
+    g->col_indices = new_col_indices;
+    g->values = new_values;
+    g->short_values = new_short_values;
+    g->activation = new_activation;
+    g->frontier = new_frontier;
+    g->next_frontier = new_next_frontier;
+    g->visited = new_visited;
+    g->degree = new_degree;
+    g->capacity = new_capacity;
+    g->max_edges = new_max_edges;
+
+    return 0;
+}
+
+// ─── Predictive Coding API ─────────────────────────────────────
+int assoc_graph_predictive_step(AssociativeGraphGPU* g, float learning_rate) {
+    if (!g) return -1;
+    int blocks = (g->capacity + 255) / 256;
+    if (blocks > 256) blocks = 256;
+    predictive_coding_kernel<<<blocks, 256>>>(
+        g->activation, g->row_ptr, g->col_indices,
+        g->values, g->short_values,
+        g->capacity, learning_rate
+    );
+    cudaDeviceSynchronize();
+    return 0;
+}
+
 } // extern "C"

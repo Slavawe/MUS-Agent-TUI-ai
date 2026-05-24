@@ -167,6 +167,8 @@ impl App {
         self.graph.top_k(8);
         // STDP: Boost during step training
         self.graph.stdp_boost(0.2);
+        // Predictive Coding during step training
+        self.graph.predictive_step(0.2);
 
         let mut active: Vec<ConceptId> = vec![seed];
         let extra = rng.gen_range(1..4).min(nc - 1);
@@ -194,6 +196,16 @@ impl App {
                 self.status.push_str(&format!(" | Panic cleared {} slots", cleared));
             }
         }
+
+        // GSOM: auto-grow if saturated and dopamine high
+        if s > 0.90 && state.dopamin > 0.5 {
+            let old_cap = self.graph.capacity();
+            let new_cap = (old_cap * 2).min(500000);
+            if new_cap > old_cap {
+                self.graph.grow(new_cap);
+                self.thoughts.push(format!("GSOM: capacity {} → {}", old_cap, new_cap));
+            }
+        }
     }
 
     fn think(&mut self) {
@@ -208,6 +220,8 @@ impl App {
         self.graph.top_k(12);
         // STDP: Boost during thinking
         self.graph.stdp_boost(0.1);
+        // Predictive Coding during thinking
+        self.graph.predictive_step(0.15);
         let lines = self.thinker.think(&self.graph, seed, 8);
         // STDP: Decay after thinking
         self.graph.stdp_decay(0.95);
@@ -265,6 +279,7 @@ impl App {
                             KeyCode::Char('q') | KeyCode::Esc => break,
                             KeyCode::Char('?') => {
                                 self.thoughts.push("s=step t=think r=reset g=grow Enter=chat".to_string());
+                                self.thoughts.push("p=Predictive Coding G=GSOM grow :rel/:relq/:relex".to_string());
                                 self.thoughts.push(":rel subj rel obj — store relation".to_string());
                                 self.thoughts.push(":relq subj rel — query relation".to_string());
                                 self.thoughts.push(":relex — load example relations".to_string());
@@ -278,6 +293,21 @@ impl App {
                                 self.status = "Activations reset".to_string();
                             }
                             KeyCode::Char('g') => self.auto_grow(),
+                            KeyCode::Char('p') => {
+                                self.graph.predictive_step(0.2);
+                                self.status = "Predictive Coding step".to_string();
+                            }
+                            KeyCode::Char('G') => {
+                                let sat = self.graph.saturation();
+                                let old_cap = self.graph.capacity();
+                                let new_cap = (old_cap * 2).min(500000);
+                                if new_cap > old_cap {
+                                    self.graph.grow(new_cap);
+                                    self.thoughts.push(format!("GSOM: capacity {} → {} (sat={:.1}%)", old_cap, new_cap, sat * 100.0));
+                                } else {
+                                    self.status = "At max capacity".to_string();
+                                }
+                            }
                             KeyCode::Char('b') => {
                                 self.use_fsm = !self.use_fsm;
                                 self.status = if self.use_fsm { "FSM mode ON".into() } else { "FSM mode OFF".into() };
@@ -366,6 +396,19 @@ impl App {
                                     self.graph.top_k(12);
                                     // STDP: Boost active edges during activation
                                     self.graph.stdp_boost(0.15);
+                                    // Predictive Coding: evaluate prediction errors
+                                    self.graph.predictive_step(0.2);
+
+                                    // GSOM: auto-grow if saturated and dopamine high
+                                    let sat = self.graph.saturation();
+                                    if sat > 0.90 && self.thinker.state.dopamin > 0.5 {
+                                        let old_cap = self.graph.capacity();
+                                        let new_cap = (old_cap * 2).min(500000);
+                                        if new_cap > old_cap {
+                                            self.graph.grow(new_cap);
+                                            self.thoughts.push(format!("🌱 GSOM: capacity {} → {}", old_cap, new_cap));
+                                        }
+                                    }
                                     // Generate AI response: FSM templates or classic
                                     self.update_chem();
                                     let response = if self.use_fsm {

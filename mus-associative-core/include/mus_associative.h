@@ -90,6 +90,12 @@ int assoc_graph_short_decay(AssociativeGraphGPU* g, float decay_rate);
 int assoc_graph_short_boost_edges(AssociativeGraphGPU* g, const ConceptId* frontier, int frontier_size, float boost);
 int assoc_graph_short_get(AssociativeGraphGPU* g, int node_idx, float* dst, int max_len);
 
+// Predictive Coding
+int assoc_graph_predictive_step(AssociativeGraphGPU* g, float learning_rate);
+
+// GSOM: dynamic capacity growth
+int assoc_graph_grow(AssociativeGraphGPU* g, int new_capacity);
+
 #ifdef __cplusplus
 }
 #endif

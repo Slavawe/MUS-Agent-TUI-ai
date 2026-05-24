@@ -70,6 +70,10 @@ extern "C" {
     fn assoc_graph_stdp_boost(g: *mut AssociativeGraphGPU, boost: f32) -> i32;
     fn assoc_graph_stdp_decay(g: *mut AssociativeGraphGPU, decay_rate: f32) -> i32;
     fn assoc_graph_stdp_get_weights(g: *mut AssociativeGraphGPU, node_idx: i32, dst: *mut f32, max_len: i32) -> i32;
+    // Predictive Coding
+    fn assoc_graph_predictive_step(g: *mut AssociativeGraphGPU, learning_rate: f32) -> i32;
+    // GSOM: dynamic capacity growth
+    fn assoc_graph_grow(g: *mut AssociativeGraphGPU, new_capacity: i32) -> i32;
 }
 
 pub struct CudaGraph {
@@ -201,6 +205,16 @@ impl CudaGraph {
         let n = unsafe { assoc_graph_stdp_get_weights(self.ptr, node_idx, dst.as_mut_ptr(), max as i32) };
         dst.truncate(n as usize);
         dst
+    }
+
+    // Predictive Coding
+    pub fn predictive_step(&self, learning_rate: f32) {
+        unsafe { assoc_graph_predictive_step(self.ptr, learning_rate); }
+    }
+
+    // GSOM: grow graph capacity
+    pub fn grow(&self, new_capacity: i32) -> i32 {
+        unsafe { assoc_graph_grow(self.ptr, new_capacity) }
     }
 
     pub fn get_top_activations(&self, n: usize) -> Vec<(u64, f32)> {
