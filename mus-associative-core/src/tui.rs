@@ -65,6 +65,9 @@ pub struct App {
     use_fsm: bool,
     auto_exec: bool,
     use_wasm: bool,
+    vsa_memory: crate::hdc::HDCPatternMemory,
+    last_vsa_thought: Vec<f32>,
+    last_vsa_roles: Vec<(String, crate::hdc::ThoughtRole)>,
 }
 
 impl App {
@@ -125,6 +128,9 @@ impl App {
             use_fsm: false,
             auto_exec,
             use_wasm,
+            vsa_memory: crate::hdc::HDCPatternMemory::new(200),
+            last_vsa_thought: vec![],
+            last_vsa_roles: vec![],
         }
     }
 
@@ -323,6 +329,8 @@ impl App {
                                 self.thoughts.push("p=Predictive Coding G=GSOM +=reward -=penalty".to_string());
                                 self.thoughts.push("l=Clippy L=Python lint S=StyleLSH".to_string());
                                 self.thoughts.push("c=toggle Coder mode :rel/:relq/:relex".to_string());
+                                self.thoughts.push(":vsa <sentence> encode VSA :vsa-subj/:vsa-act/:vsa-obj".to_string());
+                                self.thoughts.push(":vsa-pat :vsa-sim <word> V=last VSA stats".to_string());
                                 self.thoughts.push(":rel subj rel obj — store relation".to_string());
                                 self.thoughts.push(":relq subj rel — query relation".to_string());
                                 self.thoughts.push(":relex — load example relations".to_string());
@@ -397,6 +405,39 @@ impl App {
                                 self.thoughts.push(format!("  Bits: {} words, {} features", fp.bits.len(), fp.feature_count));
                                 self.thoughts.push(format!("  Raw: {:016x?}", fp.bits));
                                 self.status = format!("Style LSH: {} features", fp.feature_count);
+                            }
+                            KeyCode::Char('V') => {
+                                if self.last_vsa_thought.is_empty() {
+                                    self.status = "No VSA encoded yet".to_string();
+                                } else {
+                                    let dim = self.last_vsa_thought.len();
+                                    let nonzero = self.last_vsa_thought.iter().filter(|&&x| x != 0.0).count();
+                                    let nrg: f32 = self.last_vsa_thought.iter().map(|x| x * x).sum();
+                                    self.thoughts.push("── Last VSA ──".to_string());
+                                    self.thoughts.push(format!("  Dim: {}, nonzero: {}/{}", dim, nonzero, dim));
+                                    self.thoughts.push(format!("  Energy: {:.2}", nrg));
+                                    let roles_str: String = self.last_vsa_roles.iter()
+                                        .map(|(w, r)| format!("{}:{}", r.name(), w))
+                                        .collect::<Vec<_>>()
+                                        .join(" ");
+                                    self.thoughts.push(format!("  Roles: {}", roles_str));
+                                    // Compare to stored patterns
+                                    let mut best_sim = -1.0f32;
+                                    let mut best_idx = 0;
+                                    for (i, pat_hdv) in self.vsa_memory.hdv_patterns.iter().enumerate() {
+                                        let sim = crate::hdc::cosine_similarity(&self.last_vsa_thought, pat_hdv);
+                                        if sim > best_sim {
+                                            best_sim = sim;
+                                            best_idx = i;
+                                        }
+                                    }
+                                    if best_sim > 0.1 {
+                                        let best_pat = &self.vsa_memory.raw_patterns[best_idx];
+                                        let names: Vec<String> = best_pat.iter().map(|id| self.thinker.label(*id).to_string()).collect();
+                                        self.thoughts.push(format!("  Closest pattern [{}] {} sim={:.3}", best_idx, names.join(" "), best_sim));
+                                    }
+                                    self.status = format!("VSA: {}d {} roles", dim, self.last_vsa_roles.len());
+                                }
                             }
                             KeyCode::Char('G') => {
                                 let sat = self.graph.saturation();
@@ -476,6 +517,101 @@ impl App {
                                     if t.starts_with(":relex") {
                                         Self::load_example_relations(&mut self.thinker);
                                         self.thoughts.push("✓ Example relations loaded".to_string());
+                                        self.input.clear();
+                                        last_tick = Instant::now();
+                                        continue;
+                                    }
+                                    // ── VSA commands ────────────────────────────
+                                    if t.starts_with(":vsa ") {
+                                        let words: Vec<&str> = t[5..].split_whitespace().collect();
+                                        if words.is_empty() { self.input.clear(); continue; }
+                                        let dim = crate::hdc::HDC_DIM;
+                                        let mut acc = vec![0.0; dim];
+                                        let mut roles = Vec::new();
+                                        let role_order = [
+                                            crate::hdc::ThoughtRole::Subject,
+                                            crate::hdc::ThoughtRole::Action,
+                                            crate::hdc::ThoughtRole::Object,
+                                            crate::hdc::ThoughtRole::Attribute,
+                                            crate::hdc::ThoughtRole::Modifier,
+                                        ];
+                                        for (i, &word) in words.iter().enumerate() {
+                                            let id = concept_hash(word);
+                                            let role = role_order[i.min(role_order.len() - 1)];
+                                            let bound = crate::hdc::bind_role(id, role, dim);
+                                            crate::hdc::bundle_into(&mut acc, &bound);
+                                            roles.push((word.to_string(), role));
+                                            // Ensure node exists
+                                            if self.thinker.label(id) == "?" {
+                                                self.graph.add_node(id, word, 0);
+                                                self.thinker.add(id, word, crate::thinker::Modality::Text);
+                                            }
+                                        }
+                                        self.last_vsa_thought = acc.clone();
+                                        self.last_vsa_roles = roles;
+                                        let chain_str: String = words.iter()
+                                            .enumerate()
+                                            .map(|(i, w)| format!("{}:{}", role_order[i.min(role_order.len()-1)].name(), w))
+                                            .collect::<Vec<_>>()
+                                            .join(" ");
+                                        self.thoughts.push(format!("── VSA encode: {} ──", chain_str));
+                                        self.thoughts.push(format!("  Dim: {}, bound: {} roles", dim, words.len()));
+                                        self.status = format!("VSA: {} → {}d vector", words.join(" "), dim);
+                                        // Store in pattern memory
+                                        let ids: Vec<u64> = words.iter().map(|w| concept_hash(w)).collect();
+                                        self.vsa_memory.store(&ids);
+                                        self.input.clear();
+                                        last_tick = Instant::now();
+                                        continue;
+                                    }
+                                    if t == ":vsa-subj" || t == ":vsa-act" || t == ":vsa-obj" {
+                                        if self.last_vsa_thought.is_empty() {
+                                            self.thoughts.push("  No VSA thought encoded yet. Use :vsa first.".to_string());
+                                            self.input.clear();
+                                            last_tick = Instant::now();
+                                            continue;
+                                        }
+                                        let r = match t.as_str() {
+                                            ":vsa-subj" => crate::hdc::ThoughtRole::Subject,
+                                            ":vsa-act" => crate::hdc::ThoughtRole::Action,
+                                            ":vsa-obj" => crate::hdc::ThoughtRole::Object,
+                                            _ => crate::hdc::ThoughtRole::Subject,
+                                        };
+                                        let dim = crate::hdc::HDC_DIM;
+                                        let candidates: Vec<u64> = self.graph.get_node_ids();
+                                        let decoded = crate::hdc::unbind_role(&self.last_vsa_thought, r, dim, &candidates);
+                                        match decoded {
+                                            Some(id) => self.thoughts.push(format!("  {} → {} (id={})", r.name(), self.thinker.label(id), id)),
+                                            None => self.thoughts.push(format!("  {} → ? (no match >0.15)", r.name())),
+                                        }
+                                        self.status = format!("VSA unbind {}", r.name());
+                                        self.input.clear();
+                                        last_tick = Instant::now();
+                                        continue;
+                                    }
+                                    if t == ":vsa-pat" {
+                                        self.thoughts.push(format!("── VSA Patterns ({}) ──", self.vsa_memory.len()));
+                                        for (i, pat) in self.vsa_memory.raw_patterns.iter().enumerate().take(16) {
+                                            let names: Vec<String> = pat.iter().map(|id| self.thinker.label(*id).to_string()).collect();
+                                            self.thoughts.push(format!("  {}: [{}]", i, names.join(", ")));
+                                        }
+                                        self.input.clear();
+                                        last_tick = Instant::now();
+                                        continue;
+                                    }
+                                    if t == ":vsa-sim" || t.starts_with(":vsa-sim ") {
+                                        let target = if t == ":vsa-sim" { "" } else { t[9..].trim() };
+                                        if target.is_empty() || self.last_vsa_thought.is_empty() {
+                                            self.thoughts.push("Usage: :vsa-sim <word>".to_string());
+                                            self.input.clear();
+                                            last_tick = Instant::now();
+                                            continue;
+                                        }
+                                        let id = concept_hash(target);
+                                        let chv = crate::hdc::bipolar_from_hash(id, crate::hdc::HDC_DIM);
+                                        let sim = crate::hdc::cosine_similarity(&self.last_vsa_thought, &chv);
+                                        self.thoughts.push(format!("  sim({}) = {:.4}", target, sim));
+                                        self.status = format!("VSA sim: {:.4}", sim);
                                         self.input.clear();
                                         last_tick = Instant::now();
                                         continue;
