@@ -337,6 +337,21 @@ impl App {
                                     self.status = format!("Python errors ({:.2})", self.thinker.state.dopamin);
                                 }
                             }
+                            KeyCode::Char('S') => {
+                                // LSH style analysis of current code
+                                use std::io::Read;
+                                let mut code = String::new();
+                                let path = if std::path::Path::new("src/main.rs").exists() { "src/main.rs" } else { "." };
+                                if let Ok(mut f) = std::fs::File::open(path) {
+                                    f.read_to_string(&mut code).ok();
+                                }
+                                let lsh = crate::style_lsh::StyleLSH::new(64);
+                                let fp = lsh.analyze_code(&code);
+                                self.thoughts.push(format!("── LSH Style Fingerprint ({})", path));
+                                self.thoughts.push(format!("  Bits: {} words, {} features", fp.bits.len(), fp.feature_count));
+                                self.thoughts.push(format!("  Raw: {:016x?}", fp.bits));
+                                self.status = format!("Style LSH: {} features", fp.feature_count);
+                            }
                             KeyCode::Char('G') => {
                                 let sat = self.graph.saturation();
                                 let old_cap = self.graph.capacity();

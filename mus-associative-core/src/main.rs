@@ -11,6 +11,7 @@ mod hebbian;
 mod linter;
 mod metrics;
 mod reward;
+mod style_lsh;
 mod thinker;
 mod tui;
 mod wasm_sandbox;
