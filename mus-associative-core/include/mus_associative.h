@@ -21,7 +21,7 @@ typedef uint64_t ConceptId;
 // row_ptr[i] .. row_ptr[i+1]-1  = edges for node i
 // col_indices[row_ptr[i] + k]   = neighbor node INDEX
 // values[row_ptr[i] + k]        = edge weight
-typedef struct {
+typedef struct __align__(128) {
     ConceptId* node_ids;
     char* node_labels;
     int* node_modality;
